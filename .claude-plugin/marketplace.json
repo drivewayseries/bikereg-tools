@@ -1,0 +1,24 @@
+{
+  "name": "bikereg-tools",
+  "owner": {
+    "name": "Chris Tolley"
+  },
+  "metadata": {
+    "description": "Tools for cycling race promoters and teams working with BikeReg event data.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "bikereg-registrations",
+      "source": "./plugins/bikereg-registrations",
+      "description": "Paste up to 20 BikeReg event IDs and get one verified CSV of every registration: name, category, gender, team, city, state, reg date.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Chris Tolley"
+      },
+      "license": "MIT",
+      "keywords": ["bikereg", "cycling", "registrations", "race", "csv"],
+      "category": "productivity"
+    }
+  ]
+}
