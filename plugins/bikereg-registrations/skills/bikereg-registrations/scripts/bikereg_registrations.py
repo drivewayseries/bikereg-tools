@@ -34,6 +34,7 @@ import http.cookiejar
 import os
 import random
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -60,9 +61,47 @@ FULL_COLUMNS = MINIMAL_COLUMNS + ["Team", "City", "State", "Reg Date"]
 # HTTP
 # --------------------------------------------------------------------------
 
+CERT_HELP = """TLS certificate verification failed: this Python has no CA certificates to
+check bikereg.com's certificate against. Verification is never disabled --
+give Python a certificate bundle instead. On macOS, any one of these works:
+
+  1. Use the Python that ships with macOS, which trusts the system keychain:
+       /usr/bin/python3 {script} {args}
+
+  2. Install the certificates your Python ships with (python.org installs
+     include this one-off script; match the version you are running):
+       open "/Applications/Python 3.13/Install Certificates.command"
+
+  3. Install certifi -- this script picks it up automatically:
+       python3 -m pip install --upgrade certifi
+"""
+
+
+def make_ssl_context():
+    """
+    A context that verifies certificates, with a fallback for Pythons that
+    have no CA store. python.org builds on macOS don't use the system keychain
+    and ship empty until "Install Certificates.command" is run; when the store
+    is empty and certifi is importable, use that. Verification stays on either
+    way -- an empty store is fixed by supplying certificates, never by skipping
+    the check.
+    """
+    ctx = ssl.create_default_context()
+    try:
+        if ctx.cert_store_stats().get("x509_ca", 0) == 0:
+            import certifi
+            ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass  # leave the default context; fetch() explains the failure
+    return ctx
+
+
 def make_opener():
     jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=make_ssl_context()),
+        urllib.request.HTTPCookieProcessor(jar),
+    )
     opener.addheaders = [
         ("User-Agent", USER_AGENT),
         ("Accept", "text/html,application/xhtml+xml,*/*;q=0.8"),
@@ -71,24 +110,122 @@ def make_opener():
     return opener
 
 
-def fetch(opener, url, tries=3):
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+class Throttle:
+    """
+    Paces requests, and slows down permanently when the server pushes back.
+
+    A 429 is the site asking for fewer requests per second, so the fix is not
+    only to wait out this one response but to space every later request more
+    widely. Each 429 doubles the gap for the rest of the run.
+    """
+
+    def __init__(self, base):
+        self.delay = max(0.0, base)
+        self.slowdowns = 0
+
+    def wait(self):
+        if self.delay:
+            time.sleep(self.delay + random.uniform(0, 0.2))
+
+    def slow_down(self, cap=6.0):
+        self.delay = min(max(self.delay * 2, 1.0), cap)
+        self.slowdowns += 1
+
+
+def retry_after_seconds(exc):
+    """Honor a Retry-After header, in either the seconds or HTTP-date form."""
+    header = None
+    try:
+        header = exc.headers.get("Retry-After")
+    except Exception:
+        return None
+    if not header:
+        return None
+    try:
+        return max(0.0, float(header.strip()))
+    except ValueError:
+        pass
+    try:
+        import email.utils
+        when = email.utils.parsedate_to_datetime(header)
+        import datetime
+        now = datetime.datetime.now(when.tzinfo) if when.tzinfo else datetime.datetime.now()
+        return max(0.0, (when - now).total_seconds())
+    except Exception:
+        return None
+
+
+def is_cert_error(exc):
+    reason = getattr(exc, "reason", None)
+    return (isinstance(reason, ssl.SSLCertVerificationError)
+            or isinstance(exc, ssl.SSLCertVerificationError)
+            or "CERTIFICATE_VERIFY_FAILED" in str(exc))
+
+
+def is_policy_error(exc):
+    text = str(exc)
+    return ("403" in text and "proxy" in text.lower()) or "Tunnel connection failed" in text
+
+
+def fetch(opener, url, throttle=None, tries=5, quiet=True):
     last = None
+    rate_limited = False
     for attempt in range(tries):
         try:
             with opener.open(url, timeout=45) as resp:
                 raw = resp.read()
                 charset = resp.headers.get_content_charset() or "utf-8"
                 return raw.decode(charset, errors="replace")
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        except urllib.error.HTTPError as exc:
             last = exc
+            if exc.code not in RETRYABLE_STATUS or attempt == tries - 1:
+                break
+            if exc.code == 429:
+                rate_limited = True
+                if throttle is not None:
+                    throttle.slow_down()
+            # Wait what the server asked for, else back off 5, 10, 20, 40s
+            pause = retry_after_seconds(exc)
+            if pause is None:
+                pause = min(5.0 * (2 ** attempt), 60.0)
+            pause += random.uniform(0, 1.0)
+            if not quiet:
+                print("  ...{} from BikeReg, waiting {:.0f}s (attempt {}/{})".format(
+                    exc.code, pause, attempt + 1, tries), file=sys.stderr)
+            time.sleep(pause)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last = exc
+            # Certificate and policy failures never succeed on retry
+            if is_cert_error(exc) or is_policy_error(exc):
+                break
             if attempt < tries - 1:
                 time.sleep(1.5 * (attempt + 1))
+
+    head = "Could not fetch {}\n  {}\n\n".format(url, last)
+    if rate_limited or getattr(last, "code", None) == 429:
+        raise SystemExit(
+            head + "BikeReg rate-limited this run and kept doing so after several "
+            "waits. Re-run with a wider gap between requests:\n\n"
+            "  --delay 3\n\n"
+            "Large events have 50+ categories, and each one is a request. If it "
+            "keeps happening, wait a few minutes before trying again, or split the "
+            "events across separate runs.")
+    if is_cert_error(last):
+        raise SystemExit(head + CERT_HELP.format(
+            script=os.path.abspath(sys.argv[0]),
+            args=" ".join(sys.argv[1:]) or "<event ids>"))
+    if is_policy_error(last):
+        raise SystemExit(
+            head + "The network refused the connection by policy, not by error. You are "
+            "probably inside a sandbox whose egress rules block bikereg.com. Run this "
+            "script from a normal terminal instead.")
     raise SystemExit(
-        "Could not fetch {}\n  {}\n\n"
-        "If this is a proxy/403 error you are probably running inside a sandbox "
-        "whose egress policy blocks bikereg.com. Run this script from a normal "
-        "terminal instead.".format(url, last)
-    )
+        head + "Check your network connection and that the event ID is valid. If "
+        "bikereg.com loads in your browser but not here, the site may be blocking "
+        "automated requests -- try again with --delay 1.")
 
 
 # --------------------------------------------------------------------------
@@ -251,12 +388,12 @@ def assign_genders(entries):
 # Scrape
 # --------------------------------------------------------------------------
 
-def scrape_event(opener, eid, delay=0.3, quiet=False):
+def scrape_event(opener, eid, throttle, quiet=False):
     def log(msg):
         if not quiet:
             print(msg, file=sys.stderr)
 
-    page = fetch(opener, CONFIRMED_URL.format(eid=eid))
+    page = fetch(opener, CONFIRMED_URL.format(eid=eid), throttle, quiet=quiet)
     title = parse_event_title(page)
     stated_total = parse_stated_total(page)
 
@@ -278,7 +415,7 @@ def scrape_event(opener, eid, delay=0.3, quiet=False):
         url = CATEGORY_URL.format(
             rrid=cat["racerecid"], eid=eid, rand=random.randint(0, 999)
         )
-        fragment = fetch(opener, url)
+        fragment = fetch(opener, url, throttle, quiet=quiet)
         tp = TableParser()
         tp.feed(fragment)
         rows = tp.rows
@@ -324,7 +461,7 @@ def scrape_event(opener, eid, delay=0.3, quiet=False):
                 cat["name"], cat["stated"], found))
 
         log("  [{}/{}] {} ... {}".format(i, len(categories), cat["name"][:58], found))
-        time.sleep(delay)
+        throttle.wait()
 
     if stated_total is not None and len(entries) != stated_total:
         problems.append("event total: page says {}, scraped {}".format(
@@ -383,10 +520,40 @@ def summarize(result):
 
 
 def parse_event_arg(arg):
-    m = re.search(r"(\d{4,})", arg)
+    """One token -> one event ID. A bikereg URL keeps its path ID, not a query value."""
+    token = arg.strip().strip(".,;")
+    if "bikereg.com" in token.lower():
+        m = re.search(r"bikereg\.com/(?:[A-Za-z]+/)?(\d{4,})", token, re.I)
+        if m:
+            return m.group(1)
+    if token.isdigit():
+        return token
+    m = re.search(r"(\d{4,})", token)
     if not m:
         raise SystemExit("Could not read an event ID out of: {}".format(arg))
     return m.group(1)
+
+
+def extract_event_ids(args):
+    """
+    Turn however the events arrived into an ordered, de-duplicated ID list.
+
+    Accepts one ID per argument, but also a single pasted blob: commas,
+    newlines, semicolons and spaces all separate. Splitting before matching
+    matters -- "74062,73918" as one argument must not silently become one
+    event.
+    """
+    ids = []
+    for arg in args:
+        for token in re.split(r"[\s,;]+", arg.strip()):
+            if not token:
+                continue
+            eid = parse_event_arg(token)
+            if eid not in ids:
+                ids.append(eid)
+    if not ids:
+        raise SystemExit("No event IDs found in: {}".format(" ".join(args)))
+    return ids
 
 
 MAX_EVENTS = 20
@@ -413,17 +580,14 @@ def main():
     ap.add_argument("--minimal", action="store_true",
                     help="only First Name, Last Name, Race Category, Gender "
                          "(Event and Event ID columns are always included)")
-    ap.add_argument("--delay", type=float, default=0.3,
-                    help="seconds between category requests (default: 0.3)")
+    ap.add_argument("--delay", type=float, default=1.0,
+                    help="seconds between category requests (default: 1.0). "
+                         "Raise it if BikeReg returns 429; the script also widens "
+                         "the gap on its own when that happens.")
     ap.add_argument("-q", "--quiet", action="store_true", help="suppress progress")
     args = ap.parse_args()
 
-    # de-duplicate while preserving order, then enforce the cap
-    event_ids = []
-    for arg in args.events:
-        eid = parse_event_arg(arg)
-        if eid not in event_ids:
-            event_ids.append(eid)
+    event_ids = extract_event_ids(args.events)
     if len(event_ids) > MAX_EVENTS:
         raise SystemExit("{} events requested; the limit is {} per run. "
                          "Split them into batches.".format(len(event_ids), MAX_EVENTS))
@@ -433,10 +597,11 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     opener = make_opener()
+    throttle = Throttle(args.delay)
     all_entries, all_problems = [], []
 
     for eid in event_ids:
-        result = scrape_event(opener, eid, delay=args.delay, quiet=args.quiet)
+        result = scrape_event(opener, eid, throttle, quiet=args.quiet)
         for e in result["entries"]:
             e["event_title"] = result["title"]
             e["event_id"] = eid
@@ -461,6 +626,10 @@ def main():
     write_csv(path, all_entries, columns, with_event=True)
     print("\nWrote {} entries from {} event(s) -> {}".format(
         len(all_entries), len(event_ids), path))
+    if throttle.slowdowns:
+        print("  (BikeReg rate-limited {} time(s); request spacing widened to "
+              "{:.1f}s. Next time start with --delay {:.0f}.)".format(
+                  throttle.slowdowns, throttle.delay, throttle.delay))
 
     if all_problems:
         print("\n{} verification problem(s) -- the CSV was written, but the "
