@@ -105,12 +105,75 @@ with tempfile.TemporaryDirectory() as d:
     check("combined row", got2[1][:3], ["Pace Bend", "74062", 'Ann "AJ"'])
 
 # ---- arg parsing / slug -------------------------------------------------
+check("pasted comma list", br.extract_event_ids(["74062,73918"]), ["74062", "73918"])
+check("pasted newline list", br.extract_event_ids(["74062\n73918\n75001"]), ["74062", "73918", "75001"])
+check("pasted mixed separators", br.extract_event_ids(["74062, 73918; 75001"]), ["74062", "73918", "75001"])
+check("mixed urls and ids in one blob",
+      br.extract_event_ids(["74062 https://www.bikereg.com/73918"]), ["74062", "73918"])
+check("separate args still work", br.extract_event_ids(["74062", "73918"]), ["74062", "73918"])
+check("dupes collapse across forms",
+      br.extract_event_ids(["74062", "https://www.bikereg.com/74062", "74062"]), ["74062"])
+check("trailing punctuation", br.extract_event_ids(["74062, 73918."]), ["74062", "73918"])
+check("url with query keeps path id",
+      br.parse_event_arg("https://www.bikereg.com/Confirmed/74062?rand=999"), "74062")
+try:
+    br.extract_event_ids(["none here"]); check("no ids raises", "no raise", "SystemExit")
+except SystemExit:
+    pass
+
 check("bare id", br.parse_event_arg("74062"), "74062")
 check("url", br.parse_event_arg("https://www.bikereg.com/73918"), "73918")
 check("confirmed url", br.parse_event_arg("https://www.bikereg.com/Confirmed/74062"), "74062")
 check("slug", br.slugify("THE METEOR Mercedes Benz of South Austin's PACE BEND WEEKEND"),
       "the-meteor-mercedes-benz-of-south-austin-s")
 check("short slug untouched", br.slugify("La Primavera at Lago Vista"), "la-primavera-at-lago-vista")
+
+# ---- TLS handling -------------------------------------------------------
+import ssl, urllib.error
+ctx = br.make_ssl_context()
+check("ssl context verifies", ctx.verify_mode, ssl.CERT_REQUIRED)
+check("hostname checking on", ctx.check_hostname, True)
+check("opener builds", hasattr(br.make_opener(), "open"), True)
+
+cert_exc = urllib.error.URLError(ssl.SSLCertVerificationError(
+    "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+    "unable to get local issuer certificate (_ssl.c:1028)"))
+check("cert error detected", br.is_cert_error(cert_exc), True)
+check("cert error is not policy", br.is_policy_error(cert_exc), False)
+
+policy_exc = urllib.error.URLError("Tunnel connection failed: 403 Forbidden")
+check("policy error detected", br.is_policy_error(policy_exc), True)
+check("policy error is not cert", br.is_cert_error(policy_exc), False)
+
+plain_exc = urllib.error.URLError("timed out")
+check("plain error is neither", (br.is_cert_error(plain_exc), br.is_policy_error(plain_exc)), (False, False))
+
+# ---- throttle / rate limiting -------------------------------------------
+t = br.Throttle(1.0)
+check("throttle starts at base", t.delay, 1.0)
+t.slow_down(); check("429 doubles the gap", t.delay, 2.0)
+t.slow_down(); check("and again", t.delay, 4.0)
+for _ in range(5): t.slow_down()
+check("capped", t.delay, 6.0)
+check("slowdowns counted", t.slowdowns, 7)
+t0 = br.Throttle(0.0); t0.slow_down()
+check("zero base still backs off", t0.delay, 1.0)
+check("429 is retryable", 429 in br.RETRYABLE_STATUS, True)
+check("404 is not retryable", 404 in br.RETRYABLE_STATUS, False)
+
+class FakeHTTPError(urllib.error.HTTPError):
+    def __init__(self, code, retry_after=None):
+        hdrs = {} if retry_after is None else {"Retry-After": retry_after}
+        super().__init__("http://x", code, "err", hdrs, None)
+
+check("Retry-After seconds", br.retry_after_seconds(FakeHTTPError(429, "30")), 30.0)
+check("Retry-After absent", br.retry_after_seconds(FakeHTTPError(429)), None)
+check("Retry-After garbage", br.retry_after_seconds(FakeHTTPError(429, "soon")), None)
+check("Retry-After on plain error", br.retry_after_seconds(urllib.error.URLError("x")), None)
+
+# a 429 must not be misread as a policy block or a cert problem
+check("429 not policy", br.is_policy_error(FakeHTTPError(429)), False)
+check("429 not cert", br.is_cert_error(FakeHTTPError(429)), False)
 
 # ---- output naming and event cap ----------------------------------------
 check("single-event name", br.output_name(["74062"]).startswith("bikereg-74062-registrations-"), True)

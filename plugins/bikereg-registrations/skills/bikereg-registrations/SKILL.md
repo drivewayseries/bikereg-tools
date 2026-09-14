@@ -1,19 +1,38 @@
 ---
 name: bikereg-registrations
-description: Pulls the public "Who's Registered" list from BikeReg events into one verified CSV (name, race category, gender, team, city, state, reg date). Use when the user gives bikereg.com event IDs or URLs and asks for registrations, entrants, riders, a start list, field sizes, or who's registered. Handles up to 20 events per run and appends them into a single file.
+description: Pulls the public "Who's Registered" list from BikeReg events into one verified CSV (name, race category, gender, team, city, state, reg date). Use whenever the user wants BikeReg registrations, entrants, riders, a start list, field sizes, or who's registered — whether or not they have event IDs ready; the skill asks for them. Takes IDs or URLs, up to 20 events per run, appended into a single file.
 ---
 
 # BikeReg registrations → CSV
 
-Turn BikeReg event IDs into one CSV of every registration, verified against BikeReg's own entry counts. The work is done by `scripts/bikereg_registrations.py` (standard library only, no install). Your job is to run it, handle the one environment where it can't run, and check the result before handing it over.
+Turn BikeReg event IDs into one CSV of every registration, verified against BikeReg's own entry counts. The work is done by `scripts/bikereg_registrations.py` (standard library only, no install). Your job is to get the event list from the user, run the script, handle the environments where it can't run, and check the result before handing it over.
 
-## 1. Collect the event IDs
+## 1. Ask which events
 
-Accept any of these, mixed freely: bare IDs (`74062`), event URLs (`https://www.bikereg.com/74062`), or confirmed-list URLs (`.../Confirmed/74062`). The script extracts the ID from each.
+**If the user has not given any event IDs, ask before doing anything else.** Most people reach this skill knowing they want registrations but without having pasted IDs yet. Ask in plain conversation — not with a multiple-choice question, since the answer is a free-form list:
 
-- Duplicates are fine; the script collapses them.
-- **More than 20 unique events**: do not run. Tell the user the limit is 20 per run and ask which batch to do first (or offer to run two batches and deliver two CSVs).
-- If the user gives an event *name* instead of an ID, ask for the ID or URL. Do not guess IDs.
+> Which events? Paste BikeReg event IDs or URLs — one per line, comma-separated, however you have them. Up to 20 at a time.
+
+Then wait. Do not run anything, guess an ID, or offer a sample event.
+
+### Reading what they paste
+
+Accept whatever shape it arrives in and never make them reformat: bare IDs (`74062`), event URLs (`https://www.bikereg.com/74062`), confirmed-list URLs (`.../Confirmed/74062`), a comma-separated line, one per line, a bulleted list, or a mix. Pass the whole thing through to the script, which splits on commas, newlines, semicolons and spaces, pulls the ID out of each token, and collapses duplicates.
+
+### Confirm before a long run
+
+Echo the parsed list back and say how long it will take, then run. A 50-category event is about a minute, so:
+
+> That's 6 events — 74062, 73918, 75001, 75002, 75010, 75011. Should take around 5 minutes. Starting now.
+
+For one or two events just run; the confirmation matters when the wait is long enough that a wrong ID wastes real time.
+
+### Edge cases
+
+- **More than 20 unique events**: do not run. Say the limit is 20 per run, and offer to do it in batches — first 20 now, the rest after, then one merged CSV if they want it.
+- **An event name instead of an ID** ("the Oatmeal Classic"): do not guess, and do not search — this skill has no event lookup. Ask for the ID or URL, and tell them where it is: open the event on bikereg.com and the number in the address bar is the ID (`bikereg.com/74062` → `74062`).
+- **Something that isn't a BikeReg ID** (a RunReg/SkiReg URL, a bare word, a 3-digit number): say which token you couldn't read and ask for that one again. Don't drop it silently.
+- **Nothing pasted / they change their mind**: just stop. Don't re-prompt repeatedly.
 
 ## 2. Run the script
 
@@ -26,7 +45,7 @@ python3 "<skill base directory>/scripts/bikereg_registrations.py" 74062 73918 -o
 - Output dir: `/mnt/user-data/outputs` when it exists, otherwise the working directory.
 - Add `--minimal` only if the user asks for just names/category/gender.
 - Add `--separate` only if the user asks for one file per event as well.
-- It takes ~1–3 seconds per event category (a large stage race has 50+ categories), so allow up to a few minutes for 20 events. Do not lower `--delay`.
+- Each category is one request and the default gap is 1 s, so a 50-category event takes about a minute; allow real time for 20 events. Never lower `--delay` — raise it to 3 if the script reports rate limiting.
 
 The script prints, per event, the title, entry count, unique riders, category count, and gender split, then the combined CSV path, and ends with either `Verified: every category matches BikeReg's own entry counts.` (exit 0) or a list of `MISMATCH` lines (exit 1).
 
@@ -42,7 +61,13 @@ Some organizations block bikereg.com from Claude's sandbox. The script detects t
 3. Ask them to attach the resulting CSV (and paste the script's printed summary) back here.
 4. When it arrives, continue at step 4 using the attached file.
 
+A different failure, `CERTIFICATE_VERIFY_FAILED`, is not a block: the user's Python has no CA certificates (common with python.org Python on macOS). The script prints the fixes; relay them and suggest `/usr/bin/python3` first. Never work around it by disabling TLS verification.
+
 Do not try `curl`, `requests`, a browser, or any other route around the block — the script is the supported path, and the block is policy, not a bug.
+
+### If BikeReg rate-limits the run
+
+A `429` exit means BikeReg throttled the requests and the built-in waits weren't enough. Re-run the same command with `--delay 3`. If that also fails, wait a few minutes, then split the events into smaller batches. Do not present partial results — the script writes nothing on this failure.
 
 ## 4. Verify before delivering
 

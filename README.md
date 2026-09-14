@@ -27,13 +27,24 @@ Every category's row count is verified against the entry count BikeReg prints on
 
 ## Use
 
-Just tell Claude what you want, with the IDs or URLs:
+You don't need IDs ready. Just ask:
+
+> pull BikeReg registrations
+
+Claude asks which events, and you paste them however you have them — one per line, comma-separated, IDs or full URLs, mixed:
+
+```
+74062, 73918
+https://www.bikereg.com/75001
+```
+
+Or say it in one go if you already know them:
 
 > registrations for 74062 and 73918
 
-> pull the entry lists for https://www.bikereg.com/75001 and https://www.bikereg.com/75002 as one CSV
+Claude confirms the list, runs the script, checks the result against BikeReg's own counts, and sends the CSV.
 
-Claude runs the script, checks the result, and sends the CSV.
+**Finding an event ID:** open the event on bikereg.com — the number in the address bar is the ID (`bikereg.com/74062` → `74062`). The skill has no event search; it works from IDs you supply.
 
 ### If your organization blocks bikereg.com from Claude's sandbox
 
@@ -47,7 +58,15 @@ The script works on its own:
 python3 plugins/bikereg-registrations/skills/bikereg-registrations/scripts/bikereg_registrations.py 74062 73918 -o ~/Downloads
 ```
 
-Options: `--separate` (also one CSV per event), `--minimal` (name/category/gender only), `--delay` (seconds between requests, default 0.3).
+Options: `--separate` (also one CSV per event), `--minimal` (name/category/gender only), `--delay` (seconds between requests, default 1.0).
+
+### If BikeReg rate-limits you
+
+Each category is one request, and a big stage race has 50+. If BikeReg answers `429 Too Many Requests`, the script waits (honoring `Retry-After`), widens the gap between every later request, and retries up to 5 times. If it still can't get through it stops and tells you to re-run with `--delay 3`. Nothing partial is written.
+
+### If you see a certificate error
+
+`CERTIFICATE_VERIFY_FAILED` means your Python has no CA certificates — common with python.org Python on macOS, which doesn't use the system keychain. Easiest fix is to run macOS's own Python instead: `/usr/bin/python3 <script> …`. Or run the `Install Certificates.command` that came with your Python, or `pip3 install certifi` (the script picks it up automatically). The script prints these options when it hits the error.
 
 ## Notes on the data
 
