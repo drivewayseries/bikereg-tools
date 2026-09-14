@@ -21,7 +21,7 @@ Every category's row count is verified against the entry count BikeReg prints on
 **Claude Code:**
 
 ```
-/plugin marketplace add YOUR-GITHUB-USER/bikereg-tools
+/plugin marketplace add tolleyalways/bikereg-tools
 /plugin install bikereg-registrations@bikereg-tools
 ```
 

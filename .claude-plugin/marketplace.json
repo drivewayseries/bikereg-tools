@@ -17,8 +17,16 @@
         "name": "Chris Tolley"
       },
       "license": "MIT",
-      "keywords": ["bikereg", "cycling", "registrations", "race", "csv"],
-      "category": "productivity"
+      "keywords": [
+        "bikereg",
+        "cycling",
+        "registrations",
+        "race",
+        "csv"
+      ],
+      "category": "productivity",
+      "repository": "https://github.com/tolleyalways/bikereg-tools",
+      "homepage": "https://github.com/tolleyalways/bikereg-tools"
     }
   ]
 }
