@@ -105,6 +105,22 @@ with tempfile.TemporaryDirectory() as d:
     check("combined row", got2[1][:3], ["Pace Bend", "74062", 'Ann "AJ"'])
 
 # ---- arg parsing / slug -------------------------------------------------
+check("pasted comma list", br.extract_event_ids(["74062,73918"]), ["74062", "73918"])
+check("pasted newline list", br.extract_event_ids(["74062\n73918\n75001"]), ["74062", "73918", "75001"])
+check("pasted mixed separators", br.extract_event_ids(["74062, 73918; 75001"]), ["74062", "73918", "75001"])
+check("mixed urls and ids in one blob",
+      br.extract_event_ids(["74062 https://www.bikereg.com/73918"]), ["74062", "73918"])
+check("separate args still work", br.extract_event_ids(["74062", "73918"]), ["74062", "73918"])
+check("dupes collapse across forms",
+      br.extract_event_ids(["74062", "https://www.bikereg.com/74062", "74062"]), ["74062"])
+check("trailing punctuation", br.extract_event_ids(["74062, 73918."]), ["74062", "73918"])
+check("url with query keeps path id",
+      br.parse_event_arg("https://www.bikereg.com/Confirmed/74062?rand=999"), "74062")
+try:
+    br.extract_event_ids(["none here"]); check("no ids raises", "no raise", "SystemExit")
+except SystemExit:
+    pass
+
 check("bare id", br.parse_event_arg("74062"), "74062")
 check("url", br.parse_event_arg("https://www.bikereg.com/73918"), "73918")
 check("confirmed url", br.parse_event_arg("https://www.bikereg.com/Confirmed/74062"), "74062")

@@ -520,10 +520,40 @@ def summarize(result):
 
 
 def parse_event_arg(arg):
-    m = re.search(r"(\d{4,})", arg)
+    """One token -> one event ID. A bikereg URL keeps its path ID, not a query value."""
+    token = arg.strip().strip(".,;")
+    if "bikereg.com" in token.lower():
+        m = re.search(r"bikereg\.com/(?:[A-Za-z]+/)?(\d{4,})", token, re.I)
+        if m:
+            return m.group(1)
+    if token.isdigit():
+        return token
+    m = re.search(r"(\d{4,})", token)
     if not m:
         raise SystemExit("Could not read an event ID out of: {}".format(arg))
     return m.group(1)
+
+
+def extract_event_ids(args):
+    """
+    Turn however the events arrived into an ordered, de-duplicated ID list.
+
+    Accepts one ID per argument, but also a single pasted blob: commas,
+    newlines, semicolons and spaces all separate. Splitting before matching
+    matters -- "74062,73918" as one argument must not silently become one
+    event.
+    """
+    ids = []
+    for arg in args:
+        for token in re.split(r"[\s,;]+", arg.strip()):
+            if not token:
+                continue
+            eid = parse_event_arg(token)
+            if eid not in ids:
+                ids.append(eid)
+    if not ids:
+        raise SystemExit("No event IDs found in: {}".format(" ".join(args)))
+    return ids
 
 
 MAX_EVENTS = 20
@@ -557,12 +587,7 @@ def main():
     ap.add_argument("-q", "--quiet", action="store_true", help="suppress progress")
     args = ap.parse_args()
 
-    # de-duplicate while preserving order, then enforce the cap
-    event_ids = []
-    for arg in args.events:
-        eid = parse_event_arg(arg)
-        if eid not in event_ids:
-            event_ids.append(eid)
+    event_ids = extract_event_ids(args.events)
     if len(event_ids) > MAX_EVENTS:
         raise SystemExit("{} events requested; the limit is {} per run. "
                          "Split them into batches.".format(len(event_ids), MAX_EVENTS))

@@ -27,13 +27,24 @@ Every category's row count is verified against the entry count BikeReg prints on
 
 ## Use
 
-Just tell Claude what you want, with the IDs or URLs:
+You don't need IDs ready. Just ask:
+
+> pull BikeReg registrations
+
+Claude asks which events, and you paste them however you have them — one per line, comma-separated, IDs or full URLs, mixed:
+
+```
+74062, 73918
+https://www.bikereg.com/75001
+```
+
+Or say it in one go if you already know them:
 
 > registrations for 74062 and 73918
 
-> pull the entry lists for https://www.bikereg.com/75001 and https://www.bikereg.com/75002 as one CSV
+Claude confirms the list, runs the script, checks the result against BikeReg's own counts, and sends the CSV.
 
-Claude runs the script, checks the result, and sends the CSV.
+**Finding an event ID:** open the event on bikereg.com — the number in the address bar is the ID (`bikereg.com/74062` → `74062`). The skill has no event search; it works from IDs you supply.
 
 ### If your organization blocks bikereg.com from Claude's sandbox
 
