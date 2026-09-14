@@ -49,6 +49,10 @@ python3 plugins/bikereg-registrations/skills/bikereg-registrations/scripts/biker
 
 Options: `--separate` (also one CSV per event), `--minimal` (name/category/gender only), `--delay` (seconds between requests, default 0.3).
 
+### If you see a certificate error
+
+`CERTIFICATE_VERIFY_FAILED` means your Python has no CA certificates — common with python.org Python on macOS, which doesn't use the system keychain. Easiest fix is to run macOS's own Python instead: `/usr/bin/python3 <script> …`. Or run the `Install Certificates.command` that came with your Python, or `pip3 install certifi` (the script picks it up automatically). The script prints these options when it hits the error.
+
 ## Notes on the data
 
 - **One row per entry.** A rider in three categories appears three times. Unique-rider counts are printed in the summary.

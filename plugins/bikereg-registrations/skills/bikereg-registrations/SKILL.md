@@ -42,6 +42,8 @@ Some organizations block bikereg.com from Claude's sandbox. The script detects t
 3. Ask them to attach the resulting CSV (and paste the script's printed summary) back here.
 4. When it arrives, continue at step 4 using the attached file.
 
+A different failure, `CERTIFICATE_VERIFY_FAILED`, is not a block: the user's Python has no CA certificates (common with python.org Python on macOS). The script prints the fixes; relay them and suggest `/usr/bin/python3` first. Never work around it by disabling TLS verification.
+
 Do not try `curl`, `requests`, a browser, or any other route around the block — the script is the supported path, and the block is policy, not a bug.
 
 ## 4. Verify before delivering

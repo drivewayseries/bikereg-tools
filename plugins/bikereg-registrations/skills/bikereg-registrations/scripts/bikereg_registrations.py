@@ -34,6 +34,7 @@ import http.cookiejar
 import os
 import random
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -60,15 +61,65 @@ FULL_COLUMNS = MINIMAL_COLUMNS + ["Team", "City", "State", "Reg Date"]
 # HTTP
 # --------------------------------------------------------------------------
 
+CERT_HELP = """TLS certificate verification failed: this Python has no CA certificates to
+check bikereg.com's certificate against. Verification is never disabled --
+give Python a certificate bundle instead. On macOS, any one of these works:
+
+  1. Use the Python that ships with macOS, which trusts the system keychain:
+       /usr/bin/python3 {script} {args}
+
+  2. Install the certificates your Python ships with (python.org installs
+     include this one-off script; match the version you are running):
+       open "/Applications/Python 3.13/Install Certificates.command"
+
+  3. Install certifi -- this script picks it up automatically:
+       python3 -m pip install --upgrade certifi
+"""
+
+
+def make_ssl_context():
+    """
+    A context that verifies certificates, with a fallback for Pythons that
+    have no CA store. python.org builds on macOS don't use the system keychain
+    and ship empty until "Install Certificates.command" is run; when the store
+    is empty and certifi is importable, use that. Verification stays on either
+    way -- an empty store is fixed by supplying certificates, never by skipping
+    the check.
+    """
+    ctx = ssl.create_default_context()
+    try:
+        if ctx.cert_store_stats().get("x509_ca", 0) == 0:
+            import certifi
+            ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass  # leave the default context; fetch() explains the failure
+    return ctx
+
+
 def make_opener():
     jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=make_ssl_context()),
+        urllib.request.HTTPCookieProcessor(jar),
+    )
     opener.addheaders = [
         ("User-Agent", USER_AGENT),
         ("Accept", "text/html,application/xhtml+xml,*/*;q=0.8"),
         ("Accept-Language", "en-US,en;q=0.9"),
     ]
     return opener
+
+
+def is_cert_error(exc):
+    reason = getattr(exc, "reason", None)
+    return (isinstance(reason, ssl.SSLCertVerificationError)
+            or isinstance(exc, ssl.SSLCertVerificationError)
+            or "CERTIFICATE_VERIFY_FAILED" in str(exc))
+
+
+def is_policy_error(exc):
+    text = str(exc)
+    return ("403" in text and "proxy" in text.lower()) or "Tunnel connection failed" in text
 
 
 def fetch(opener, url, tries=3):
@@ -81,14 +132,26 @@ def fetch(opener, url, tries=3):
                 return raw.decode(charset, errors="replace")
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
             last = exc
+            # Certificate and policy failures never succeed on retry
+            if is_cert_error(exc) or is_policy_error(exc):
+                break
             if attempt < tries - 1:
                 time.sleep(1.5 * (attempt + 1))
+
+    head = "Could not fetch {}\n  {}\n\n".format(url, last)
+    if is_cert_error(last):
+        raise SystemExit(head + CERT_HELP.format(
+            script=os.path.abspath(sys.argv[0]),
+            args=" ".join(sys.argv[1:]) or "<event ids>"))
+    if is_policy_error(last):
+        raise SystemExit(
+            head + "The network refused the connection by policy, not by error. You are "
+            "probably inside a sandbox whose egress rules block bikereg.com. Run this "
+            "script from a normal terminal instead.")
     raise SystemExit(
-        "Could not fetch {}\n  {}\n\n"
-        "If this is a proxy/403 error you are probably running inside a sandbox "
-        "whose egress policy blocks bikereg.com. Run this script from a normal "
-        "terminal instead.".format(url, last)
-    )
+        head + "Check your network connection and that the event ID is valid. If "
+        "bikereg.com loads in your browser but not here, the site may be blocking "
+        "automated requests -- try again with --delay 1.")
 
 
 # --------------------------------------------------------------------------
