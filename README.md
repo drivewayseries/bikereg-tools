@@ -47,7 +47,11 @@ The script works on its own:
 python3 plugins/bikereg-registrations/skills/bikereg-registrations/scripts/bikereg_registrations.py 74062 73918 -o ~/Downloads
 ```
 
-Options: `--separate` (also one CSV per event), `--minimal` (name/category/gender only), `--delay` (seconds between requests, default 0.3).
+Options: `--separate` (also one CSV per event), `--minimal` (name/category/gender only), `--delay` (seconds between requests, default 1.0).
+
+### If BikeReg rate-limits you
+
+Each category is one request, and a big stage race has 50+. If BikeReg answers `429 Too Many Requests`, the script waits (honoring `Retry-After`), widens the gap between every later request, and retries up to 5 times. If it still can't get through it stops and tells you to re-run with `--delay 3`. Nothing partial is written.
 
 ### If you see a certificate error
 

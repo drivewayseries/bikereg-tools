@@ -132,6 +132,33 @@ check("policy error is not cert", br.is_cert_error(policy_exc), False)
 plain_exc = urllib.error.URLError("timed out")
 check("plain error is neither", (br.is_cert_error(plain_exc), br.is_policy_error(plain_exc)), (False, False))
 
+# ---- throttle / rate limiting -------------------------------------------
+t = br.Throttle(1.0)
+check("throttle starts at base", t.delay, 1.0)
+t.slow_down(); check("429 doubles the gap", t.delay, 2.0)
+t.slow_down(); check("and again", t.delay, 4.0)
+for _ in range(5): t.slow_down()
+check("capped", t.delay, 6.0)
+check("slowdowns counted", t.slowdowns, 7)
+t0 = br.Throttle(0.0); t0.slow_down()
+check("zero base still backs off", t0.delay, 1.0)
+check("429 is retryable", 429 in br.RETRYABLE_STATUS, True)
+check("404 is not retryable", 404 in br.RETRYABLE_STATUS, False)
+
+class FakeHTTPError(urllib.error.HTTPError):
+    def __init__(self, code, retry_after=None):
+        hdrs = {} if retry_after is None else {"Retry-After": retry_after}
+        super().__init__("http://x", code, "err", hdrs, None)
+
+check("Retry-After seconds", br.retry_after_seconds(FakeHTTPError(429, "30")), 30.0)
+check("Retry-After absent", br.retry_after_seconds(FakeHTTPError(429)), None)
+check("Retry-After garbage", br.retry_after_seconds(FakeHTTPError(429, "soon")), None)
+check("Retry-After on plain error", br.retry_after_seconds(urllib.error.URLError("x")), None)
+
+# a 429 must not be misread as a policy block or a cert problem
+check("429 not policy", br.is_policy_error(FakeHTTPError(429)), False)
+check("429 not cert", br.is_cert_error(FakeHTTPError(429)), False)
+
 # ---- output naming and event cap ----------------------------------------
 check("single-event name", br.output_name(["74062"]).startswith("bikereg-74062-registrations-"), True)
 check("multi-event name", br.output_name(["1", "2", "3"]).startswith("bikereg-3-events-registrations-"), True)

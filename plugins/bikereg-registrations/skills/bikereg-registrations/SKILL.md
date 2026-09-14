@@ -26,7 +26,7 @@ python3 "<skill base directory>/scripts/bikereg_registrations.py" 74062 73918 -o
 - Output dir: `/mnt/user-data/outputs` when it exists, otherwise the working directory.
 - Add `--minimal` only if the user asks for just names/category/gender.
 - Add `--separate` only if the user asks for one file per event as well.
-- It takes ~1–3 seconds per event category (a large stage race has 50+ categories), so allow up to a few minutes for 20 events. Do not lower `--delay`.
+- Each category is one request and the default gap is 1 s, so a 50-category event takes about a minute; allow real time for 20 events. Never lower `--delay` — raise it to 3 if the script reports rate limiting.
 
 The script prints, per event, the title, entry count, unique riders, category count, and gender split, then the combined CSV path, and ends with either `Verified: every category matches BikeReg's own entry counts.` (exit 0) or a list of `MISMATCH` lines (exit 1).
 
@@ -45,6 +45,10 @@ Some organizations block bikereg.com from Claude's sandbox. The script detects t
 A different failure, `CERTIFICATE_VERIFY_FAILED`, is not a block: the user's Python has no CA certificates (common with python.org Python on macOS). The script prints the fixes; relay them and suggest `/usr/bin/python3` first. Never work around it by disabling TLS verification.
 
 Do not try `curl`, `requests`, a browser, or any other route around the block — the script is the supported path, and the block is policy, not a bug.
+
+### If BikeReg rate-limits the run
+
+A `429` exit means BikeReg throttled the requests and the built-in waits weren't enough. Re-run the same command with `--delay 3`. If that also fails, wait a few minutes, then split the events into smaller batches. Do not present partial results — the script writes nothing on this failure.
 
 ## 4. Verify before delivering
 
