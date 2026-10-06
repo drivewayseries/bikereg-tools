@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Tools for cycling race promoters and teams working with BikeReg event data.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
@@ -23,6 +23,27 @@
         "registrations",
         "race",
         "csv"
+      ],
+      "category": "productivity",
+      "repository": "https://github.com/drivewayseries/bikereg-tools",
+      "homepage": "https://github.com/drivewayseries/bikereg-tools"
+    },
+    {
+      "name": "race-review-deck",
+      "source": "./plugins/race-review-deck",
+      "description": "Turn BikeReg registration CSVs and a race logo into a post-race review deck (.pptx): category, gender, location, team, registration-timing and retention trends, year over year, with outliers and takeaways.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Chris Tolley"
+      },
+      "license": "MIT",
+      "keywords": [
+        "bikereg",
+        "cycling",
+        "race",
+        "slides",
+        "pptx",
+        "report"
       ],
       "category": "productivity",
       "repository": "https://github.com/drivewayseries/bikereg-tools",

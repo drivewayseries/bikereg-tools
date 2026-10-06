@@ -1,0 +1,19 @@
+{
+  "name": "race-review-deck",
+  "version": "0.1.0",
+  "description": "Turn BikeReg registration CSVs and a race logo into a post-race review deck (.pptx): category, gender, location, team, registration-timing and retention trends, year over year, with outliers and takeaways.",
+  "author": {
+    "name": "Chris Tolley"
+  },
+  "license": "MIT",
+  "keywords": [
+    "bikereg",
+    "cycling",
+    "race",
+    "slides",
+    "pptx",
+    "report"
+  ],
+  "repository": "https://github.com/drivewayseries/bikereg-tools",
+  "homepage": "https://github.com/drivewayseries/bikereg-tools"
+}

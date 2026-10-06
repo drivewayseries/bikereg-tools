@@ -14,15 +14,27 @@ Event, Event ID, First Name, Last Name, Race Category, Gender, Team, City, State
 
 Every category's row count is verified against the entry count BikeReg prints on the page, so a partial scrape can't pass silently. No login needed — it reads the same "Who's Registered" list anyone can see, so it works for events you don't promote.
 
+### race-review-deck
+
+Attach registration CSVs (one per year for year-over-year) and your race logo, and get an editable **PowerPoint post-race review**:
+
+- **Colors from your logo.** Brand colors are pulled out of the logo and used for highlights and chart series, lightened as needed to read on the dark photo backgrounds.
+- **Preset slides from this repo.** The slide list and background photos are fetched from GitHub on every run, so changing them here changes every future deck.
+- **The analysis:** category trends and biggest movers, small fields, gender split, where riders came from (in-state vs. travelling), biggest teams, registration pace and spike days, age, revenue, and how many riders came back. Outliers are called out.
+- **A takeaway headline on every slide**, plus an executive summary and recommendations that Claude writes from the numbers.
+
+Works with the CSV from **bikereg-registrations** or with BikeReg's promoter export (which adds age, price, and ZIP, so you get the age and revenue slides too). Slides whose data isn't in your files drop out automatically.
+
 ## Install
 
-**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations** from the list.
+**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations** and/or **race-review-deck** from the list.
 
 **Claude Code:**
 
 ```
 /plugin marketplace add drivewayseries/bikereg-tools
 /plugin install bikereg-registrations@bikereg-tools
+/plugin install race-review-deck@bikereg-tools
 ```
 
 ## Use
@@ -79,6 +91,39 @@ Each category is one request, and a big stage race has 50+. If BikeReg answers `
 BikeReg's Who's Registered page (`bikereg.com/Confirmed/<id>`) is a React app backed by a GraphQL endpoint, `bikereg.com/api/supergraph/gql`. The script sends the page's own two queries: `AR_GetWhosRegisteredGroups` returns every category's `raceRecId`, name and entry count, and `AR_GetWhosRegisteredEntries` returns the riders, 10 categories per request. It then reconciles each category's entry count against BikeReg's. Politeness delay between requests defaults to 1 s.
 
 If BikeReg changes its API, the script fails loudly, either on a GraphQL error or on a count mismatch. Run `scripts/test_bikereg.py` (offline, uses captured responses) to tell an API change from a script edit, and open an issue.
+
+## Race review deck
+
+### Use
+
+> make a race review deck from these
+
+…with your CSVs and logo attached. Claude shows you the palette it pulled from the logo, confirms which file is which year, writes the takeaways, and sends the .pptx. Tell it about anything the data can't know, like "we raised prices on May 23" or "the date moved this year", and that context ends up in the headlines.
+
+### Changing the preset slides
+
+Everything lives in [`plugins/race-review-deck/skills/race-review-deck/slides/`](plugins/race-review-deck/skills/race-review-deck/slides/):
+
+- **`deck.json`** holds the slide order, titles, and which chart or table each slide shows, plus which photos rotate behind which slide types.
+- **`backgrounds/`** holds the photos: 1920×1080, already darkened, since slide text is white.
+
+Commit to `main`, and the next deck anyone builds uses the new slides. No plugin update is needed. Field reference, the available charts, and a test checklist are in [`references/slide-library.md`](plugins/race-review-deck/skills/race-review-deck/references/slide-library.md).
+
+### Standalone use (no Claude)
+
+```
+cd plugins/race-review-deck/skills/race-review-deck/scripts
+pip install python-pptx pillow
+python3 palette.py logo.png -o palette.json
+python3 analyze.py race_2024.csv race_2025.csv -o analysis.json
+python3 build_deck.py --analysis analysis.json --palette palette.json --logo logo.png -o review.pptx
+```
+
+Without a narrative file, slides use the preset titles, and the summary falls back to auto-generated facts. To try it on fictional data, run `python3 make_sample_data.py sample`.
+
+### Privacy
+
+A promoter export includes rider emails, phones, and addresses. The analysis keeps only counts, team names, and places, so no rider names or contact details reach the deck. `*.csv` and `*.pptx` are git-ignored here, so registration data and decks don't get committed by accident.
 
 ## License
 

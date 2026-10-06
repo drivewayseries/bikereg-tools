@@ -1,0 +1,369 @@
+{
+  "schema": 1,
+  "name": "Race review — standard",
+  "about": "Preset slides for a post-race registration review. Edit this file (and the photos in backgrounds/) on GitHub to change every future deck; build_deck.py fetches both at run time and falls back to the copy bundled with the plugin. 'requires' lists analysis flags or data paths that must be present, otherwise the slide is skipped. 'title' is the fallback headline; the narrative file supplies a takeaway headline per slide id. Backgrounds rotate through the pool for each layout; a slide can pin one with \"background\": \"D12.jpg\".",
+  "theme": {
+    "heading_font": "Arial",
+    "body_font": "Arial",
+    "mode": "dark",
+    "background_color": "#131419",
+    "content_panel_opacity": 0.82
+  },
+  "footer": "{race_name} · {current} race review",
+  "slides": [
+    {
+      "id": "title",
+      "layout": "title",
+      "title": "{race_name}",
+      "subtitle": "{current} Race Review"
+    },
+    {
+      "id": "summary",
+      "layout": "bullets",
+      "title": "Executive summary",
+      "items": [
+        "narrative.summary",
+        "facts"
+      ]
+    },
+    {
+      "id": "at_a_glance",
+      "layout": "kpis",
+      "title": "{current} at a glance",
+      "metrics": [
+        {
+          "key": "entries",
+          "label": "Entries",
+          "format": "int"
+        },
+        {
+          "key": "riders",
+          "label": "Unique riders",
+          "format": "int"
+        },
+        {
+          "key": "women_share",
+          "label": "Women's share",
+          "format": "pct"
+        },
+        {
+          "key": "categories",
+          "label": "Categories",
+          "format": "int"
+        },
+        {
+          "key": "states",
+          "label": "States represented",
+          "format": "int"
+        },
+        {
+          "key": "revenue",
+          "label": "Registration revenue",
+          "format": "money"
+        },
+        {
+          "key": "teams",
+          "label": "Teams",
+          "format": "int"
+        },
+        {
+          "key": "median_age",
+          "label": "Median age",
+          "format": "decimal"
+        }
+      ]
+    },
+    {
+      "id": "s_participation",
+      "layout": "section",
+      "title": "Participation"
+    },
+    {
+      "id": "entries_trend",
+      "layout": "chart",
+      "chart": "entries_by_edition",
+      "title": "Entries and riders by year",
+      "requires": [
+        "multi_edition"
+      ]
+    },
+    {
+      "id": "category_entries",
+      "layout": "chart",
+      "chart": "category_entries",
+      "title": "Entries by category",
+      "max_items": 15
+    },
+    {
+      "id": "category_movers",
+      "layout": "chart",
+      "chart": "category_movers",
+      "title": "Biggest category changes vs {previous}",
+      "requires": [
+        "charts.category_movers"
+      ]
+    },
+    {
+      "id": "category_families",
+      "layout": "chart",
+      "chart": "family_by_edition",
+      "title": "Field mix by category group",
+      "requires": [
+        "multi_edition"
+      ]
+    },
+    {
+      "id": "small_fields",
+      "layout": "table",
+      "table": "small_fields",
+      "title": "Categories with small fields",
+      "max_rows": 12,
+      "requires": [
+        "tables.small_fields.rows"
+      ]
+    },
+    {
+      "id": "s_riders",
+      "layout": "section",
+      "title": "Who raced"
+    },
+    {
+      "id": "gender_split",
+      "layout": "chart",
+      "chart": "gender_by_edition",
+      "title": "Gender split of entries"
+    },
+    {
+      "id": "gender_by_family",
+      "layout": "chart",
+      "chart": "gender_by_family",
+      "title": "Women and men by category group"
+    },
+    {
+      "id": "women_fields",
+      "layout": "table",
+      "table": "women_fields",
+      "title": "Women's field sizes",
+      "max_rows": 12,
+      "requires": [
+        "tables.women_fields.rows"
+      ]
+    },
+    {
+      "id": "age",
+      "layout": "chart",
+      "chart": "age_distribution",
+      "title": "Age of entrants",
+      "requires": [
+        "has_age"
+      ]
+    },
+    {
+      "id": "retention",
+      "layout": "kpis",
+      "title": "Who came back from {previous}",
+      "source": "tables.retention",
+      "requires": [
+        "has_retention"
+      ],
+      "metrics": [
+        {
+          "key": "retention_rate",
+          "label": "of {previous} riders returned",
+          "format": "pct"
+        },
+        {
+          "key": "returning",
+          "label": "Returning riders",
+          "format": "int"
+        },
+        {
+          "key": "new",
+          "label": "New riders",
+          "format": "int"
+        },
+        {
+          "key": "lapsed",
+          "label": "{previous} riders who didn't return",
+          "format": "int"
+        },
+        {
+          "key": "first_timers_ever",
+          "label": "First time at any edition",
+          "format": "int"
+        },
+        {
+          "key": "every_edition",
+          "label": "Raced every edition",
+          "format": "int"
+        }
+      ]
+    },
+    {
+      "id": "retention_by_family",
+      "layout": "chart",
+      "chart": "retention_by_family",
+      "title": "Return rate by category group",
+      "requires": [
+        "charts.retention_by_family"
+      ]
+    },
+    {
+      "id": "s_where",
+      "layout": "section",
+      "title": "Where they came from",
+      "requires": [
+        "has_location"
+      ]
+    },
+    {
+      "id": "top_states",
+      "layout": "chart",
+      "chart": "top_states",
+      "title": "Entries by state",
+      "requires": [
+        "has_location"
+      ]
+    },
+    {
+      "id": "travel",
+      "layout": "chart",
+      "chart": "in_state_by_edition",
+      "title": "Local vs travelling riders",
+      "requires": [
+        "has_location"
+      ]
+    },
+    {
+      "id": "top_cities",
+      "layout": "table",
+      "table": "top_cities",
+      "title": "Top home towns",
+      "max_rows": 12,
+      "requires": [
+        "has_city"
+      ]
+    },
+    {
+      "id": "top_teams",
+      "layout": "chart",
+      "chart": "top_teams",
+      "title": "Biggest teams",
+      "requires": [
+        "has_team"
+      ]
+    },
+    {
+      "id": "s_when",
+      "layout": "section",
+      "title": "When they registered",
+      "requires": [
+        "has_reg_date"
+      ]
+    },
+    {
+      "id": "reg_curve",
+      "layout": "chart",
+      "chart": "reg_curve",
+      "title": "Registration pace",
+      "requires": [
+        "has_reg_date"
+      ]
+    },
+    {
+      "id": "daily_regs",
+      "layout": "chart",
+      "chart": "daily_regs",
+      "title": "Daily registrations",
+      "requires": [
+        "has_reg_date"
+      ]
+    },
+    {
+      "id": "reg_spikes",
+      "layout": "table",
+      "table": "reg_spikes",
+      "title": "Registration spikes",
+      "requires": [
+        "tables.reg_spikes.rows"
+      ]
+    },
+    {
+      "id": "revenue",
+      "layout": "chart",
+      "chart": "revenue_by_edition",
+      "title": "Registration revenue",
+      "requires": [
+        "price_yoy"
+      ]
+    },
+    {
+      "id": "revenue_by_category",
+      "layout": "chart",
+      "chart": "revenue_by_category",
+      "title": "Revenue by category",
+      "requires": [
+        "has_price"
+      ]
+    },
+    {
+      "id": "outliers",
+      "layout": "bullets",
+      "title": "Outliers worth a look",
+      "items": [
+        "narrative.outliers",
+        "outliers"
+      ],
+      "max_items": 7
+    },
+    {
+      "id": "recommendations",
+      "layout": "bullets",
+      "title": "Recommendations for next year",
+      "items": [
+        "narrative.recommendations"
+      ],
+      "requires": [
+        "narrative.recommendations"
+      ]
+    },
+    {
+      "id": "data_notes",
+      "layout": "bullets",
+      "title": "About this data",
+      "items": [
+        "data_notes"
+      ],
+      "small": true
+    },
+    {
+      "id": "closing",
+      "layout": "closing",
+      "title": "Thank you",
+      "subtitle": "{race_name}"
+    }
+  ],
+  "backgrounds": {
+    "title": [
+      "D16.jpg"
+    ],
+    "section": [
+      "D11.jpg",
+      "D12.jpg",
+      "D14.jpg",
+      "D13.jpg",
+      "D15.jpg"
+    ],
+    "content": [
+      "D10.jpg",
+      "D13.jpg",
+      "D15.jpg",
+      "D12.jpg",
+      "D14.jpg",
+      "D11.jpg"
+    ],
+    "closing": [
+      "D16.jpg"
+    ]
+  }
+}
