@@ -21,9 +21,9 @@ Accept whatever shape it arrives in and never make them reformat: bare IDs (`740
 
 ### Confirm before a long run
 
-Echo the parsed list back and say how long it will take, then run. A 50-category event is about a minute, so:
+Echo the parsed list back and say how long it will take, then run. Each event takes a few seconds (one request for its categories, then one per 10 categories), so:
 
-> That's 6 events — 74062, 73918, 75001, 75002, 75010, 75011. Should take around 5 minutes. Starting now.
+> That's 6 events — 74062, 73918, 75001, 75002, 75010, 75011. Should take under a minute. Starting now.
 
 For one or two events just run; the confirmation matters when the wait is long enough that a wrong ID wastes real time.
 
@@ -45,7 +45,7 @@ python3 "<skill base directory>/scripts/bikereg_registrations.py" 74062 73918 -o
 - Output dir: `/mnt/user-data/outputs` when it exists, otherwise the working directory.
 - Add `--minimal` only if the user asks for just names/category/gender.
 - Add `--separate` only if the user asks for one file per event as well.
-- Each category is one request and the default gap is 1 s, so a 50-category event takes about a minute; allow real time for 20 events. Never lower `--delay` — raise it to 3 if the script reports rate limiting.
+- Each event is one request for its category list plus one per 10 categories, with a 1 s gap between requests, so even a 50-category event takes well under 10 seconds. Never lower `--delay` — raise it to 3 if the script reports rate limiting.
 
 The script prints, per event, the title, entry count, unique riders, category count, and gender split, then the combined CSV path, and ends with either `Verified: every category matches BikeReg's own entry counts.` (exit 0) or a list of `MISMATCH` lines (exit 1).
 
@@ -73,7 +73,7 @@ A `429` exit means BikeReg throttled the requests and the built-in waits weren't
 
 Never hand over a CSV you have not checked:
 
-- Exit code 0 and the `Verified:` line present. If there are `MISMATCH` lines, the CSV was still written but is not trustworthy: report the mismatches to the user verbatim and do not present the file as complete. A mismatch usually means BikeReg changed its page markup — say so, and suggest opening an issue on the plugin's repository.
+- Exit code 0 and the `Verified:` line present. If there are `MISMATCH` lines, the CSV was still written but is not trustworthy: report the mismatches to the user verbatim and do not present the file as complete. A mismatch usually means BikeReg changed its data API — say so, and suggest opening an issue on the plugin's repository.
 - Re-count the CSV yourself (python `csv` module): row count equals the sum of the per-event entry counts the script printed; the `Event ID` column contains exactly the requested IDs.
 - Read the `note:` lines. They list categories with no gender in the name (kids races, open fields) — those rows carry `Unspecified`.
 
@@ -92,10 +92,12 @@ For an upcoming event, note the pull date: the list is a snapshot and grows unti
 
 `Event, Event ID, First Name, Last Name, Race Category, Gender, Team, City, State, Reg Date`
 
+`Reg Date` is `YYYY-MM-DD`, the date the entry was made.
+
 With `--minimal`: `Event, Event ID, First Name, Last Name, Race Category, Gender`.
 
 ## How it works (for troubleshooting only)
 
-`bikereg.com/Confirmed/<id>` is a static page listing every category as `<table class="categoryName" racerecid="…">` with its entry count. Each category's riders come from `bikereg.com/Registration/ConfirmedSingleRace.aspx?RaceRecID=<rrid>&EventID=<id>&…`, an HTML fragment. The script does one GET for the page plus one per category, parses with the standard library, and compares every category's row count to the count printed on the page. No login, no JavaScript, no browser.
+`bikereg.com/Confirmed/<id>` is a React page that loads its data from BikeReg's GraphQL endpoint, `https://www.bikereg.com/api/supergraph/gql`. The script POSTs the same two queries the page does: `AR_GetWhosRegisteredGroups` (event name, every category's `raceRecId`, name and entry count) and `AR_GetWhosRegisteredEntries` (riders for up to 10 `raceRecId`s at a time). It then compares every category's entry count to the count BikeReg reports. No login, no browser. If the endpoint returns GraphQL `errors`, the script exits with BikeReg's message, which usually means the schema changed; the current queries are in the page's `Scripts/dist/Participant/WhosRegistered.b.js` bundle.
 
-`scripts/test_bikereg.py` runs offline parser tests against real captured markup. If the user reports a mismatch, run it first: if it passes, BikeReg's live markup has changed and the parsers in the script need updating; if it fails, the script itself was edited.
+`scripts/test_bikereg.py` runs offline tests against real captured GraphQL responses. If the user reports a mismatch, run it first: if it passes, BikeReg's live API has changed and the queries or parsers in the script need updating; if it fails, the script itself was edited.

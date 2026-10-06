@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for bikereg_registrations.py using real markup captured from BikeReg."""
+"""Offline tests for bikereg_registrations.py using real responses captured from BikeReg."""
 import sys, os, tempfile, csv
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bikereg_registrations as br
@@ -9,63 +9,116 @@ def check(label, got, want):
     if got != want:
         FAIL.append("{}\n    got:  {!r}\n    want: {!r}".format(label, got, want))
 
-# ---- real category markup from /Confirmed/74062 -------------------------
-EVENT_PAGE = """
-<html><head><title>THE METEOR Pace Bend Weekend Online Registration</title></head>
-<body>
-<div>Total Event Registrations: 1003</div>
-<div class="categoryHeader">
-<table class="mobiletable categoryName no-result-hide" racerecid="929043" iswaitlist="False" isvirtual="False">
-  <thead><tr class="day"><th class="catName">
-    <div><span>15 entries</span><a href="#" onclick="return false">-</a></div>
-    <div class="notranslate">Omnium Registration - Moontower Racing's Men Open Cat 3/4</div>
-  </th></tr></thead>
-</table>
-<div class="categoryEntries"></div>
-</div>
-<div class="categoryHeader">
-<table class="mobiletable categoryName no-result-hide" racerecid="929044" iswaitlist="False" isvirtual="False">
-  <thead><tr class="day"><th class="catName">
-    <div><span>1 entry</span><a href="#" onclick="return false">+</a></div>
-    <div class="notranslate">Saturday Road Race - Girls Under 15 - Saturday</div>
-  </th></tr></thead>
-</table>
-</div>
-</body></html>
-"""
+# ---- real AR_GetWhosRegisteredGroups response (event 75223, trimmed) -----
+GROUPS = {"athleticEvent": {
+    "name": "Oatmeal Classic - State Championship Road Races",
+    "presentationGroups": [
+        {"groupName": "Wave 1", "registrationCount": {"count": 74},
+         "categories": [
+             {"raceRecId": "943776", "name": "Men's Pro/1/2", "registrationCount": {"count": 48}},
+             {"raceRecId": "943785", "name": "Masters Men's 1/2/3/4 - 50+", "registrationCount": {"count": 26}}]},
+        {"groupName": "Wave 2", "registrationCount": {"count": 1},
+         "categories": [
+             {"raceRecId": "943790", "name": "Women  Cat 3/4 &amp; Juniors", "registrationCount": {"count": 1}},
+             # the same category listed under a second group must not be fetched twice
+             {"raceRecId": "943776", "name": "Men's Pro/1/2", "registrationCount": {"count": 48}}]},
+    ]}}
 
-cp = br.CategoryParser(); cp.feed(EVENT_PAGE)
-check("category count", len(cp.categories), 2)
-check("racerecid", cp.categories[0]["racerecid"], "929043")
-check("stated count", cp.categories[0]["stated"], 15)
-check("category name", cp.categories[0]["name"],
-      "Omnium Registration - Moontower Racing's Men Open Cat 3/4")
-check("singular 'entry'", cp.categories[1]["stated"], 1)
-check("name 2", cp.categories[1]["name"], "Saturday Road Race - Girls Under 15 - Saturday")
-check("title", br.parse_event_title(EVENT_PAGE), "THE METEOR Pace Bend Weekend")
-check("stated total", br.parse_stated_total(EVENT_PAGE), 1003)
+title, cats, total = br.parse_groups(GROUPS)
+check("title", title, "Oatmeal Classic - State Championship Road Races")
+check("category count (deduped)", len(cats), 3)
+check("racerecid", cats[0]["racerecid"], "943776")
+check("stated count", cats[0]["stated"], 48)
+check("category name", cats[1]["name"], "Masters Men's 1/2/3/4 - 50+")
+check("name whitespace/entities cleaned", cats[2]["name"], "Women Cat 3/4 & Juniors")
+check("group kept", cats[2]["group"], "Wave 2")
+check("stated total is sum of groups", total, 75)
+check("unknown event", br.parse_groups({"athleticEvent": None}), None)
+check("integer raceRecId", br.parse_groups({"athleticEvent": {"name": "x", "presentationGroups": [
+    {"registrationCount": {"count": 1}, "categories": [
+        {"raceRecId": 5, "name": "A", "registrationCount": {"count": 1}}]}]}})[1][0]["racerecid"], "5")
 
-# ---- real fragment markup from ConfirmedSingleRace.aspx ------------------
-FRAGMENT = """
-<div class="categoryEntries ">
-<table class="registrationTable tablesorter mobiletable no-result-hide tablesorter-default" role="grid">
- <thead><tr class="header event-participant-header tablesorter-headerRow" role="row">
-   <th class="header">FIRST</th><th>LAST</th><th>City</th><th>St</th><th>TEAM</th><th>DATE</th>
- </tr></thead>
- <tbody>
-  <tr class="event-participant"><td>Nate</td><td>Beaver</td><td>Columbus</td><td>OH</td><td>Fount Cycling Guild</td><td>2/02</td></tr>
-  <tr class="event-participant"><td>Miguel A</td><td>M&amp;Garay</td><td>Austin</td><td>TX</td><td>Team, Inc.</td><td>1/04</td></tr>
-  <tr><td colspan="6"></td></tr>
- </tbody>
-</table></div>
-"""
-tp = br.TableParser(); tp.feed(FRAGMENT)
-check("row count (header + 2)", len(tp.rows), 3)
-check("header row", [c.lower() for c in tp.rows[0]],
-      ["first", "last", "city", "st", "team", "date"])
-check("data row", tp.rows[1], ["Nate", "Beaver", "Columbus", "OH", "Fount Cycling Guild", "2/02"])
-check("entity unescape", tp.rows[2][1], "M&Garay")
-check("comma in team preserved", tp.rows[2][4], "Team, Inc.")
+# ---- real AR_GetWhosRegisteredEntries response (trimmed) ------------------
+ENTRIES = {"AR_EventCategories": [
+    {"raceRecId": "943776", "eventEntries": [
+        {"id": "13348940", "firstName": "James", "lastName": "Kennedy", "city": "Dallas",
+         "state": "TX", "teamName": "United Cycling", "entryDate": "2026-08-24T22:18:52.197-04:00"},
+        {"id": "13358668", "firstName": "Scott", "lastName": "Veggeberg", "city": "Austin",
+         "state": "TX", "teamName": None, "entryDate": "2026-08-28T09:36:09.513-04:00"}]},
+    {"raceRecId": "943785", "eventEntries": []},
+]}
+by = br.parse_entries(ENTRIES)
+check("entries keyed by raceRecId", sorted(by), ["943776", "943785"])
+check("entry count", len(by["943776"]), 2)
+check("empty category kept", by["943785"], [])
+check("reg date", br.reg_date("2026-08-24T22:18:52.197-04:00"), "2026-08-24")
+check("reg date missing", br.reg_date(None), "")
+
+# ---- scrape_event end to end against canned GraphQL responses -------------
+class Resp:
+    def __init__(self, payload):
+        import json
+        self.raw = json.dumps(payload).encode()
+        self.headers = type("H", (), {"get_content_charset": lambda self: "utf-8"})()
+    def read(self): return self.raw
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+class Opener:
+    def __init__(self, groups, entries):
+        self.groups, self.entries, self.requests = groups, entries, []
+    def open(self, req, timeout=None):
+        import json
+        v = json.loads(req.data)["variables"]
+        self.requests.append(v)
+        check("POSTs JSON", req.get_header("Content-type"), "application/json")
+        return Resp({"data": self.groups if "eventID" in v else self.entries})
+
+GOOD = {"athleticEvent": {"name": "Test Event", "presentationGroups": [
+    {"groupName": "W1", "registrationCount": {"count": 2}, "categories": [
+        {"raceRecId": "943776", "name": "Men's Pro/1/2", "registrationCount": {"count": 2}},
+        {"raceRecId": "943785", "name": "Kids Race", "registrationCount": {"count": 0}}]}]}}
+op = Opener(GOOD, ENTRIES)
+res = br.scrape_event(op, "75223", br.Throttle(0), quiet=True)
+check("scrape: no problems", res["problems"], [])
+check("scrape: entries", [(e["first"], e["gender"], e["date"]) for e in res["entries"]],
+      [("James", "M", "2026-08-24"), ("Scott", "M", "2026-08-28")])
+check("scrape: null team becomes blank", res["entries"][1]["team"], "")
+check("scrape: event id sent as int", op.requests[0], {"appType": "BIKEREG", "eventID": 75223})
+check("scrape: categories batched", op.requests[1], {"appType": "BIKEREG", "categoryIds": [943776, 943785]})
+
+BAD = {"athleticEvent": {"name": "Test Event", "presentationGroups": [
+    {"groupName": "W1", "registrationCount": {"count": 3}, "categories": [
+        {"raceRecId": "943776", "name": "Men's Pro/1/2", "registrationCount": {"count": 3}},
+        {"raceRecId": "999999", "name": "Missing", "registrationCount": {"count": 0}}]}]}}
+res = br.scrape_event(Opener(BAD, ENTRIES), "75223", br.Throttle(0), quiet=True)
+check("scrape: mismatches reported", res["problems"], [
+    "Men's Pro/1/2: BikeReg says 3 entries, got 2",
+    "Missing: BikeReg returned no entry list",
+    "event total: BikeReg says 3, got 2"])
+
+big = {"athleticEvent": {"name": "Big", "presentationGroups": [
+    {"groupName": "G", "registrationCount": {"count": 0}, "categories": [
+        {"raceRecId": str(i), "name": "C%d" % i, "registrationCount": {"count": 0}} for i in range(1, 24)]}]}}
+op = Opener(big, {"AR_EventCategories": [{"raceRecId": str(i), "eventEntries": []} for i in range(1, 24)]})
+br.scrape_event(op, "1", br.Throttle(0), quiet=True)
+check("23 categories -> 3 entry requests", [len(r["categoryIds"]) for r in op.requests[1:]], [10, 10, 3])
+
+for payload, label in [({"athleticEvent": None}, "unknown event exits"),
+                       ({"athleticEvent": {"name": "x", "presentationGroups": []}}, "no categories exits")]:
+    try:
+        br.scrape_event(Opener(payload, {}), "1", br.Throttle(0), quiet=True)
+        check(label, "no raise", "SystemExit")
+    except SystemExit:
+        pass
+
+class ErrOpener(Opener):
+    def open(self, req, timeout=None):
+        return Resp({"errors": [{"message": "Cannot query field \"name\""}]})
+try:
+    br.gql(ErrOpener(None, None), "q", {}); check("graphql errors exit", "no raise", "SystemExit")
+except SystemExit as exc:
+    check("graphql error surfaced", "Cannot query field" in str(exc), True)
 
 # ---- gender rules -------------------------------------------------------
 check("women", br.category_gender("Omnium Registration - Women Cat 3/4"), "F")
@@ -88,14 +141,14 @@ check("unresolved categories", unresolved, ["Kids Race p/b Woom Bikes"])
 
 # ---- CSV writing --------------------------------------------------------
 rows = [{"first": 'Ann "AJ"', "last": "O'Neill, Jr", "category": "Women Cat 3/4",
-         "gender": "F", "team": "A, B & C", "city": "Austin", "state": "TX", "date": "2/02"}]
+         "gender": "F", "team": "A, B & C", "city": "Austin", "state": "TX", "date": "2026-02-02"}]
 with tempfile.TemporaryDirectory() as d:
     p = os.path.join(d, "t.csv")
     br.write_csv(p, rows, br.FULL_COLUMNS)
     got = list(csv.reader(open(p)))
     check("csv header", got[0], br.FULL_COLUMNS)
     check("csv quoting round-trip", got[1],
-          ['Ann "AJ"', "O'Neill, Jr", "Women Cat 3/4", "F", "A, B & C", "Austin", "TX", "2/02"])
+          ['Ann "AJ"', "O'Neill, Jr", "Women Cat 3/4", "F", "A, B & C", "Austin", "TX", "2026-02-02"])
 
     rows2 = [dict(rows[0], event_title="Pace Bend", event_id="74062")]
     p2 = os.path.join(d, "t2.csv")

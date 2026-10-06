@@ -12,25 +12,28 @@ per-event CSV next to it. Standard library only -- no pip install, no browser.
 
 How it works
 ------------
-BikeReg's "Who's Registered" page (/Confirmed/<eventID>) ships every category
-as a <table class="categoryName" racerecid="..."> carrying the category name
-and its entry count. The riders themselves load per category from
+BikeReg's "Who's Registered" page (/Confirmed/<eventID>) is a React app that
+loads its data from BikeReg's own GraphQL endpoint, /api/supergraph/gql. This
+script sends the same two queries the page does:
 
-    /Registration/ConfirmedSingleRace.aspx?RaceRecID=<rrid>&EventID=<eid>&...
+    AR_GetWhosRegisteredGroups   event name, every category (raceRecId, name)
+                                 and the entry count BikeReg shows for each
+    AR_GetWhosRegisteredEntries  the riders for a batch of raceRecIds
 
-which returns a plain HTML fragment. So this is two ordinary GETs per event --
-one for the page, one per category -- with no JavaScript involved.
+So it is one POST for the category list plus one per batch of categories,
+with no browser and no login.
 
-Verification is not optional: each category's scraped row count is checked
-against the count BikeReg prints on the page, and the total against
-"Total Event Registrations". A mismatch exits non-zero rather than writing a
-CSV you would have to second-guess.
+Verification is not optional: each category's entry count is checked against
+the count BikeReg reports for it, and the total against the sum of BikeReg's
+group counts. A mismatch exits non-zero so you never get a CSV you would have
+to second-guess.
 """
 
 import argparse
 import csv
 import html
 import http.cookiejar
+import json
 import os
 import random
 import re
@@ -40,14 +43,34 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from html.parser import HTMLParser
 
 BASE = "https://www.bikereg.com"
 CONFIRMED_URL = BASE + "/Confirmed/{eid}"
-CATEGORY_URL = (
-    BASE + "/Registration/ConfirmedSingleRace.aspx"
-    "?eid=&team=&RaceRecID={rrid}&EventID={eid}&SearchTerm=&rand={rand}&bogus=false"
-)
+GQL_URL = BASE + "/api/supergraph/gql"
+APP_TYPE = "BIKEREG"
+CATEGORIES_PER_REQUEST = 10
+
+# Same queries as the Who's Registered page's WhosRegistered.b.js bundle.
+GROUPS_QUERY = """
+query AR_GetWhosRegisteredGroups($appType: ApplicationType!, $eventID: Int!) {
+  athleticEvent(appType: $appType, id: $eventID) {
+    name
+    presentationGroups(showClosedCategories: true, showTeamCategories: true, showWaitlists: true) {
+      groupName
+      registrationCount { count }
+      categories { raceRecId name registrationCount { count } }
+    }
+  }
+}
+"""
+ENTRIES_QUERY = """
+query AR_GetWhosRegisteredEntries($appType: ApplicationType!, $categoryIds: [Int!]!) {
+  AR_EventCategories(appType: $appType, categoryIds: $categoryIds) {
+    raceRecId
+    eventEntries { id firstName lastName city state teamName entryDate }
+  }
+}
+"""
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
@@ -170,12 +193,13 @@ def is_policy_error(exc):
     return ("403" in text and "proxy" in text.lower()) or "Tunnel connection failed" in text
 
 
-def fetch(opener, url, throttle=None, tries=5, quiet=True):
+def fetch(opener, url, throttle=None, tries=5, quiet=True, data=None, headers=None):
     last = None
     rate_limited = False
     for attempt in range(tries):
         try:
-            with opener.open(url, timeout=45) as resp:
+            req = urllib.request.Request(url, data=data, headers=headers or {})
+            with opener.open(req, timeout=45) as resp:
                 raw = resp.read()
                 charset = resp.headers.get_content_charset() or "utf-8"
                 return raw.decode(charset, errors="replace")
@@ -210,7 +234,7 @@ def fetch(opener, url, throttle=None, tries=5, quiet=True):
             head + "BikeReg rate-limited this run and kept doing so after several "
             "waits. Re-run with a wider gap between requests:\n\n"
             "  --delay 3\n\n"
-            "Large events have 50+ categories, and each one is a request. If it "
+            "Large events need several requests each. If it "
             "keeps happening, wait a few minutes before trying again, or split the "
             "events across separate runs.")
     if is_cert_error(last):
@@ -236,107 +260,64 @@ def clean(text):
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
-class CategoryParser(HTMLParser):
-    """Collect (racerecid, category name, stated entry count) from the event page."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.categories = []
-        self._depth = 0
-        self._attrs = None
-        self._chunks = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag != "table":
-            return
-        a = dict(attrs)
-        classes = (a.get("class") or "").split()
-        if self._depth == 0 and "categoryName" in classes:
-            self._depth = 1
-            self._attrs = a
-            self._chunks = []
-        elif self._depth:
-            self._depth += 1
-
-    def handle_endtag(self, tag):
-        if tag != "table" or not self._depth:
-            return
-        self._depth -= 1
-        if self._depth == 0:
-            self._flush()
-
-    def handle_data(self, data):
-        if self._depth:
-            self._chunks.append(data)
-
-    def _flush(self):
-        text = clean(" ".join(self._chunks))
-        count = re.search(r"(\d+)\s+entr(?:y|ies)", text, re.I)
-        name = re.sub(r"^\s*\d+\s+entr(?:y|ies)\s*", "", text, flags=re.I)
-        name = re.sub(r"^\s*[-+]\s*", "", name).strip()
-        rrid = self._attrs.get("racerecid")
-        if rrid and name:
-            self.categories.append(
-                {
-                    "racerecid": rrid,
-                    "name": name,
-                    "stated": int(count.group(1)) if count else None,
-                    "waitlist": (self._attrs.get("iswaitlist") or "").lower() == "true",
-                }
-            )
-        self._attrs, self._chunks = None, []
+def gql(opener, query, variables, throttle=None, quiet=True):
+    """POST one GraphQL query and return its "data", failing loudly on errors."""
+    body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    text = fetch(opener, GQL_URL, throttle, quiet=quiet, data=body, headers={
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    })
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        raise SystemExit("BikeReg's GraphQL endpoint returned something other than "
+                         "JSON:\n  {}".format(text[:300]))
+    if payload.get("errors"):
+        raise SystemExit("BikeReg's GraphQL endpoint reported an error -- its schema "
+                         "may have changed:\n  {}".format(
+                             "; ".join(e.get("message", str(e)) for e in payload["errors"])))
+    return payload.get("data") or {}
 
 
-class TableParser(HTMLParser):
-    """Return every row of the first registrationTable in a fragment, as cell text."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.rows = []
-        self._in_table = False
-        self._row = None
-        self._cell = None
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "table" and not self._in_table:
-            classes = (dict(attrs).get("class") or "").split()
-            if "registrationTable" in classes:
-                self._in_table = True
-        elif self._in_table and tag == "tr":
-            self._row = []
-        elif self._in_table and tag in ("td", "th") and self._row is not None:
-            self._cell = []
-
-    def handle_endtag(self, tag):
-        if not self._in_table:
-            return
-        if tag in ("td", "th") and self._cell is not None:
-            self._row.append(clean(" ".join(self._cell)))
-            self._cell = None
-        elif tag == "tr" and self._row is not None:
-            if any(self._row):
-                self.rows.append(self._row)
-            self._row = None
-        elif tag == "table":
-            self._in_table = False
-
-    def handle_data(self, data):
-        if self._cell is not None:
-            self._cell.append(data)
+def parse_groups(data):
+    """
+    (event name, categories, stated total) from an AR_GetWhosRegisteredGroups
+    result, or None when the event doesn't exist. Categories are deduplicated
+    by raceRecId in page order; the total is the sum of BikeReg's group counts.
+    """
+    event = data.get("athleticEvent")
+    if not event:
+        return None
+    categories, seen, stated_total = [], set(), 0
+    for group in event.get("presentationGroups") or []:
+        stated_total += ((group.get("registrationCount") or {}).get("count") or 0)
+        for cat in group.get("categories") or []:
+            rrid = str(cat.get("raceRecId") or "")
+            if not rrid or rrid in seen:
+                continue
+            seen.add(rrid)
+            count = (cat.get("registrationCount") or {}).get("count")
+            categories.append({
+                "racerecid": rrid,
+                "name": clean(cat.get("name") or ""),
+                "stated": int(count) if count is not None else None,
+                "group": clean(group.get("groupName") or ""),
+            })
+    return clean(event.get("name") or ""), categories, stated_total
 
 
-def parse_event_title(page):
-    m = re.search(r"<title>(.*?)</title>", page, re.S | re.I)
-    if not m:
-        return ""
-    return re.sub(r"\s+Online Registration\s*$", "", clean(m.group(1)), flags=re.I)
+def parse_entries(data):
+    """raceRecId -> list of raw entry dicts, from an AR_GetWhosRegisteredEntries result."""
+    out = {}
+    for cat in data.get("AR_EventCategories") or []:
+        out[str(cat.get("raceRecId"))] = cat.get("eventEntries") or []
+    return out
 
 
-def parse_stated_total(page):
-    m = re.search(r"Total Event Registrations:\s*</?[^>]*>?\s*([\d,]+)", page, re.I)
-    if not m:
-        m = re.search(r"Total Event Registrations:\s*([\d,]+)", page, re.I)
-    return int(m.group(1).replace(",", "")) if m else None
+def reg_date(value):
+    """'2026-08-24T22:18:52.197-04:00' -> '2026-08-24' (BikeReg's own timezone)."""
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", value or "")
+    return m.group(1) if m else (value or "")
 
 
 def slugify(text, limit=45):
@@ -393,78 +374,60 @@ def scrape_event(opener, eid, throttle, quiet=False):
         if not quiet:
             print(msg, file=sys.stderr)
 
-    page = fetch(opener, CONFIRMED_URL.format(eid=eid), throttle, quiet=quiet)
-    title = parse_event_title(page)
-    stated_total = parse_stated_total(page)
-
-    cp = CategoryParser()
-    cp.feed(page)
-    categories = cp.categories
+    parsed = parse_groups(gql(opener, GROUPS_QUERY,
+                              {"appType": APP_TYPE, "eventID": int(eid)}, throttle, quiet=quiet))
+    if parsed is None:
+        raise SystemExit(
+            "BikeReg has no event {}. Check the event ID -- {} should show a "
+            "'Who's Registered' list.".format(eid, CONFIRMED_URL.format(eid=eid)))
+    title, categories, stated_total = parsed
     if not categories:
         raise SystemExit(
-            "No categories found for event {}. Check the event ID -- "
-            "{} should show a 'Who's Registered' list.".format(eid, CONFIRMED_URL.format(eid=eid))
-        )
+            "Event {} ({}) has no categories on its 'Who's Registered' list -- "
+            "registration may not be open, or the organizer hides the list. "
+            "See {}".format(eid, title or "untitled", CONFIRMED_URL.format(eid=eid)))
 
     log("Event {}: {}".format(eid, title or "(untitled)"))
-    log("  {} categories, {} stated registrations".format(
-        len(categories), stated_total if stated_total is not None else "?"))
+    log("  {} categories, {} stated registrations".format(len(categories), stated_total))
 
     entries, problems = [], []
-    for i, cat in enumerate(categories, 1):
-        url = CATEGORY_URL.format(
-            rrid=cat["racerecid"], eid=eid, rand=random.randint(0, 999)
-        )
-        fragment = fetch(opener, url, throttle, quiet=quiet)
-        tp = TableParser()
-        tp.feed(fragment)
-        rows = tp.rows
-        if not rows:
-            problems.append("{}: no table returned".format(cat["name"]))
-            continue
-
-        header = [c.lower() for c in rows[0]]
-        def col(*names):
-            for n in names:
-                if n in header:
-                    return header.index(n)
-            return None
-
-        fi, li = col("first"), col("last")
-        ci, si = col("city"), col("st", "state")
-        ti, di = col("team"), col("date", "reg date")
-        if fi is None or li is None:
-            problems.append("{}: unexpected columns {}".format(cat["name"], rows[0]))
-            continue
-
-        def cell(row, idx):
-            return row[idx] if idx is not None and idx < len(row) else ""
-
-        found = 0
-        for row in rows[1:]:
-            first, last = cell(row, fi), cell(row, li)
-            if not first and not last:
-                continue
-            entries.append({
-                "first": first,
-                "last": last,
-                "category": cat["name"],
-                "team": cell(row, ti),
-                "city": cell(row, ci),
-                "state": cell(row, si),
-                "date": cell(row, di),
-            })
-            found += 1
-
-        if cat["stated"] is not None and found != cat["stated"]:
-            problems.append("{}: page says {} entries, scraped {}".format(
-                cat["name"], cat["stated"], found))
-
-        log("  [{}/{}] {} ... {}".format(i, len(categories), cat["name"][:58], found))
+    done = 0
+    for start in range(0, len(categories), CATEGORIES_PER_REQUEST):
         throttle.wait()
+        batch = categories[start:start + CATEGORIES_PER_REQUEST]
+        by_rrid = parse_entries(gql(
+            opener, ENTRIES_QUERY,
+            {"appType": APP_TYPE, "categoryIds": [int(c["racerecid"]) for c in batch]},
+            throttle, quiet=quiet))
+
+        for cat in batch:
+            done += 1
+            if cat["racerecid"] not in by_rrid:
+                problems.append("{}: BikeReg returned no entry list".format(cat["name"]))
+                continue
+            found = 0
+            for raw in by_rrid[cat["racerecid"]]:
+                first, last = clean(raw.get("firstName") or ""), clean(raw.get("lastName") or "")
+                if not first and not last:
+                    continue
+                entries.append({
+                    "first": first,
+                    "last": last,
+                    "category": cat["name"],
+                    "team": clean(raw.get("teamName") or ""),
+                    "city": clean(raw.get("city") or ""),
+                    "state": clean(raw.get("state") or ""),
+                    "date": reg_date(raw.get("entryDate")),
+                })
+                found += 1
+
+            if cat["stated"] is not None and found != cat["stated"]:
+                problems.append("{}: BikeReg says {} entries, got {}".format(
+                    cat["name"], cat["stated"], found))
+            log("  [{}/{}] {} ... {}".format(done, len(categories), cat["name"][:58], found))
 
     if stated_total is not None and len(entries) != stated_total:
-        problems.append("event total: page says {}, scraped {}".format(
+        problems.append("event total: BikeReg says {}, got {}".format(
             stated_total, len(entries)))
 
     entries, unresolved = assign_genders(entries)
@@ -581,7 +544,7 @@ def main():
                     help="only First Name, Last Name, Race Category, Gender "
                          "(Event and Event ID columns are always included)")
     ap.add_argument("--delay", type=float, default=1.0,
-                    help="seconds between category requests (default: 1.0). "
+                    help="seconds between requests (default: 1.0). "
                          "Raise it if BikeReg returns 429; the script also widens "
                          "the gap on its own when that happens.")
     ap.add_argument("-q", "--quiet", action="store_true", help="suppress progress")

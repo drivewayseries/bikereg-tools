@@ -76,9 +76,9 @@ Each category is one request, and a big stage race has 50+. If BikeReg answers `
 
 ## How it works
 
-`bikereg.com/Confirmed/<id>` lists every category with a `racerecid` and its entry count. Each category's riders come from `ConfirmedSingleRace.aspx?RaceRecID=…&EventID=…` as an HTML fragment. The script fetches the page plus one fragment per category, parses with `html.parser`, and reconciles counts. Politeness delay between requests defaults to 0.3 s.
+BikeReg's Who's Registered page (`bikereg.com/Confirmed/<id>`) is a React app backed by a GraphQL endpoint, `bikereg.com/api/supergraph/gql`. The script sends the page's own two queries: `AR_GetWhosRegisteredGroups` returns every category's `raceRecId`, name and entry count, and `AR_GetWhosRegisteredEntries` returns the riders, 10 categories per request. It then reconciles each category's entry count against BikeReg's. Politeness delay between requests defaults to 1 s.
 
-If BikeReg changes its markup, the verification will fail loudly. Run `scripts/test_bikereg.py` (offline, uses captured markup) to tell a markup change from a script edit, and open an issue.
+If BikeReg changes its API, the script fails loudly, either on a GraphQL error or on a count mismatch. Run `scripts/test_bikereg.py` (offline, uses captured responses) to tell an API change from a script edit, and open an issue.
 
 ## License
 
