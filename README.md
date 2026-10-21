@@ -175,10 +175,11 @@ A fetched template missing a column the builder writes is ignored in favor of th
 ```
 cd plugins/bike-shop-poster-mailer/skills/bike-shop-poster-mailer
 python3 scripts/mailer.py geocode 78704
+python3 scripts/mailer.py osm --lat 30.2428 --lng -97.7658 --radius 15 --state TX --out shops.json
 python3 scripts/mailer.py build --shops shops.json --config config.json --out labels.csv
 ```
 
-`shops.json` is a list of `{name, place_id, lat, lng, address}`, and `config.json` holds the sender and package. Both formats are documented in the skill's `SKILL.md`. No extra Python packages are needed.
+`osm` fetches the bike shops listed in OpenStreetMap. Shops it lists without a full address are left with `address` blank, so fill those in (or add shops it missed) before running `build`. `shops.json` is a list of `{name, place_id, lat, lng, address}`, and `config.json` holds the sender and package. Both formats are documented in the skill's `SKILL.md`. No extra Python packages are needed.
 
 ## License
 

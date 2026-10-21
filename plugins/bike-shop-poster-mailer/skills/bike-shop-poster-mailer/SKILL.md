@@ -10,6 +10,7 @@ Produce a CSV that uploads to **USPS Click-N-Ship → Import Labels → File Upl
 `scripts/mailer.py` does the deterministic work:
 - geocoding the ZIP
 - planning the search grid
+- searching OpenStreetMap when Google Places isn't available
 - splitting addresses into fields
 - the radius filter and deduplication
 - writing the CSV
@@ -93,7 +94,22 @@ For **each** center, make one `places_search` call with `location_bias_lat`, `lo
 
 Results come back as a merged list or as per-query summaries. In either form, take each place's **name, place_id, latitude, longitude, and full street address**. In the summary form the address sits in the parenthetical after the rating, for example `4510 Terry-O Ln Unit 126, Austin, TX 78745`. Copy the address exactly, because the script splits it into fields.
 
-If `places_search` isn't available (outside claude.ai), use `web_search` and take addresses from the shops' own sites. Use `geocode` on each shop's ZIP for approximate coordinates, and tell the user the radius filter is approximate in that case.
+### Without `places_search`: OpenStreetMap first, then web search
+
+If `places_search` isn't available, skip `grid` and search OpenStreetMap in one call. Pass the state from `geocode`:
+
+```bash
+python3 scripts/mailer.py osm --lat 30.2428 --lng -97.7658 --radius 15 --state TX --out shops.json
+```
+
+This writes `shops.json` with each shop's exact coordinates, so the radius filter stays exact. The report on stdout gives `found`, `with_address`, and a `needs_address` list. Then use `web_search` for two jobs:
+
+1. **Finish incomplete addresses.** Each `needs_address` entry has the parts OpenStreetMap knows in `partial_address`, plus a `website` when there is one. Find the full street address, preferably on the shop's own site, and fill in that shop's `address` in `shops.json`. Keep its `lat` and `lng`.
+2. **Fill gaps.** OpenStreetMap misses some shops, especially new ones. Run a few searches such as "bike shops near <city>" for the main towns in the radius. Add any shop that isn't already in `shops.json` with `"source": "web"`, and use `geocode` on its ZIP for approximate coordinates. You don't need to check for duplicates yourself: `build` drops repeats by address and treats "Road" and "Rd" as the same.
+
+If `osm` fails (it exits with "fall back to web search", for example when the network blocks the server), build the whole list from `web_search` the same way, with `geocode` coordinates for every shop.
+
+In the review table, mark shops that came from web search. Tell the user how many came from each source, and that distances for web-search shops are approximate (ZIP-level), so shops near the edge of the radius may be off.
 
 **Decide what counts as a bike shop.** The poster goes to a storefront that sells or services bicycles. Keep:
 - independent shops

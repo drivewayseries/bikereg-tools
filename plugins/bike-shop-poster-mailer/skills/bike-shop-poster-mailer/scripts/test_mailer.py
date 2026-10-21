@@ -54,6 +54,31 @@ check("geocode uses http_get", (mailer.geocode("78704-1234"), seen),
        ["https://api.zippopotam.us/us/78704"]))
 mailer.http_get = real_get
 
+# OpenStreetMap elements as Overpass returns them
+osm = mailer.osm_shops([
+    {"type": "node", "id": 1, "lat": 30.21, "lon": -97.80, "tags": {
+        "name": "Bikealot", "addr:housenumber": "5330", "addr:street": "Manchaca Road",
+        "addr:city": "Austin", "addr:postcode": "78745", "addr:unit": "102",
+        "addr:state": "TEXAS"}},
+    {"type": "way", "id": 2, "center": {"lat": 30.25, "lon": -97.75}, "tags": {
+        "name": "No Number Cycles", "addr:street": "Congress Avenue", "addr:city": "Austin",
+        "website": "https://example.com"}},
+    {"type": "node", "id": 3, "lat": 30.2, "lon": -97.7, "tags": {"shop": "bicycle"}},
+], state="tx")
+check("osm: unnamed shop skipped", len(osm), 2)
+check("osm: full address gets state from --state, unit as #",
+      (osm[0]["place_id"], osm[0]["address"]),
+      ("osm:node/1", "5330 Manchaca Road #102, Austin, TX 78745"))
+check("osm: osm address parses", mailer.parse_address(osm[0]["address"])["line2"], "#102")
+check("osm: way uses its center, incomplete address left blank",
+      (osm[1]["lat"], osm[1]["address"], osm[1]["partial_address"], osm[1]["website"]),
+      (30.25, "", "Austin, TX", "https://example.com"))
+check("osm: query covers the radius in meters",
+      "around:16093,30.2,-97.7" in mailer.osm_query(30.2, -97.7, 10), True)
+check("address key: Road == Rd., Suite == Ste",
+      mailer.addr_key(mailer.parse_address("5330 Manchaca Road Suite 4, Austin, TX 78745")),
+      mailer.addr_key(mailer.parse_address("5330 Manchaca Rd. Ste 4, Austin, TX 78745-1234")))
+
 # End-to-end build against the bundled template
 with tempfile.TemporaryDirectory() as d:
     d = Path(d)
@@ -67,6 +92,8 @@ with tempfile.TemporaryDirectory() as d:
         {"name": "Mobile Repair", "place_id": "c", "lat": 0, "lng": 0, "address": ""},
         {"name": "Skip Me", "place_id": "d", "lat": 30.25, "lng": -97.76,
          "address": "200 Main St, Austin, TX 78704"},
+        {"name": "Near Shop (web)", "place_id": "", "lat": 30.25, "lng": -97.76,
+         "address": "100 Main Street Suite 2, Austin, TX 78704", "source": "web"},
     ]
     cfg = {"origin": {"lat": 30.2428, "lng": -97.7658}, "radius_mi": 10,
            "sender": {"first_name": "Jane", "last_name": "Rider", "line1": "1 Test Ave",
@@ -84,9 +111,9 @@ with tempfile.TemporaryDirectory() as d:
     rows = list(csv.reader(out.open()))
     template = next(csv.reader(mailer.BUNDLED_TEMPLATE.open(encoding="utf-8-sig")))
     check("header matches the USPS template exactly", rows[0], template)
-    check("one row kept (dupe, far, no-address, excluded dropped)", report["rows"], 1)
+    check("one row kept (dupe, far, no-address, excluded, web repeat dropped)", report["rows"], 1)
     check("drop reasons", sorted(x["reason"].split(" (")[0] for x in report["dropped"]),
-          ["excluded by user", "no usable street address", "outside radius"])
+          ["duplicate address", "excluded by user", "no usable street address", "outside radius"])
     r = dict(zip(rows[0], rows[1]))
     check("suite on line 2", (r["Recipient Address Line 1"], r["Recipient Address Line 2"]),
           ("100 Main St", "Ste 2"))

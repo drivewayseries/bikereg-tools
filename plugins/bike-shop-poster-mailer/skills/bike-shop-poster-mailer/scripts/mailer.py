@@ -4,6 +4,8 @@
 Subcommands:
   geocode ZIP                      -> ZIP centroid (lat, lng, city, state) as JSON
   grid --lat --lng --radius MI     -> search centers covering the radius, as JSON
+  osm --lat --lng --radius MI --state ST --out shops.json
+                                   -> OpenStreetMap bike shops in the radius, written as shops.json
   build --shops shops.json --config config.json --out labels.csv [--template auto]
                                    -> Click-N-Ship "Import Labels" CSV + review report (JSON on stdout)
 
@@ -12,7 +14,7 @@ from this plugin's GitHub repo at run time, so if USPS changes the template, rep
 assets/Label_Template.csv on main updates every user. If GitHub can't be reached, or the
 fetched file doesn't look like a label template, the bundled copy is used.
 """
-import argparse, csv, io, json, math, re, ssl, sys, urllib.error, urllib.request
+import argparse, csv, io, json, math, re, ssl, sys, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 BUNDLED_TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "Label_Template.csv"
@@ -26,6 +28,7 @@ REQUIRED_COLUMNS = [
     "Package Weight (lb)", "Package Weight (oz)", "Length", "Width", "Height",
 ]
 EARTH_MI = 3958.8
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 
 # ---------------------------------------------------------------- network
@@ -118,6 +121,62 @@ def grid(lat, lng, radius_mi, cell_mi=None):
     return pts
 
 
+# ---------------------------------------------------------------- openstreetmap
+def osm_query(lat, lng, radius_mi):
+    return (f'[out:json][timeout:60];nwr["shop"="bicycle"]'
+            f'(around:{int(radius_mi * 1609.34)},{lat},{lng});out center tags;')
+
+
+def osm_shops(elements, state=""):
+    """Overpass elements -> shops.json entries. A shop missing any address part gets
+    address "" plus the parts it has in "partial_address", for a web search to finish."""
+    shops = []
+    for e in elements:
+        t = e.get("tags", {})
+        name = (t.get("name") or t.get("brand") or "").strip()
+        lat = e.get("lat", e.get("center", {}).get("lat"))
+        lng = e.get("lon", e.get("center", {}).get("lon"))
+        if not name or lat is None or lng is None:
+            continue
+        street = ""
+        if t.get("addr:housenumber") and t.get("addr:street"):
+            street = f'{t["addr:housenumber"]} {t["addr:street"]}'
+            unit = (t.get("addr:unit") or t.get("addr:suite") or "").strip()
+            if unit:
+                street += f" #{unit}" if re.fullmatch(r"[\w-]+", unit) else f" {unit}"
+        city = t.get("addr:city", "")
+        st = t.get("addr:state", "").strip().upper()
+        if len(st) != 2:  # missing, or spelled out ("TEXAS")
+            st = state.upper()
+        zipc = t.get("addr:postcode", "")
+        complete = street and city and len(st) == 2 and re.fullmatch(r"\d{5}(-\d{4})?", zipc)
+        shop = {"name": name, "place_id": f'osm:{e["type"]}/{e["id"]}', "lat": lat, "lng": lng,
+                "address": f"{street}, {city}, {st} {zipc}" if complete else "", "source": "osm"}
+        if not complete:
+            shop["partial_address"] = ", ".join(x for x in [street, city, st, zipc] if x)
+        if t.get("website") or t.get("contact:website"):
+            shop["website"] = t.get("website") or t.get("contact:website")
+        shops.append(shop)
+    return shops
+
+
+def osm(lat, lng, radius_mi, state, out_path, endpoint=OVERPASS_URL):
+    url = endpoint + "?" + urllib.parse.urlencode({"data": osm_query(lat, lng, radius_mi)})
+    try:
+        elements = json.loads(http_get(url, timeout=90))["elements"]
+    except Exception as e:  # network, TLS, rate limit, or a blocked domain
+        sys.exit(f"OpenStreetMap search failed ({e}); fall back to web search.")
+    shops = osm_shops(elements, state)
+    Path(out_path).write_text(json.dumps(shops, indent=2))
+    print(json.dumps({
+        "found": len(shops),
+        "with_address": sum(bool(s["address"]) for s in shops),
+        "needs_address": [{"name": s["name"], "partial_address": s["partial_address"],
+                           "website": s.get("website", "")} for s in shops if not s["address"]],
+        "out": str(out_path),
+    }, indent=2))
+
+
 # ---------------------------------------------------------------- addresses
 UNIT_RE = re.compile(
     r"\s+((?:Ste|Suite|Unit|Apt|Bldg|Building|Rm|Room|Fl|Floor|Spc|Space|Lot|Trlr)\.?\s*#?\s*[\w-]+"
@@ -190,6 +249,18 @@ def clean_name(s):
     return re.sub(r"\s+", " ", NAME_BAD.sub(" ", s or "")).strip()
 
 
+STREET_ABBR = {"street": "st", "road": "rd", "avenue": "ave", "boulevard": "blvd", "drive": "dr",
+               "lane": "ln", "parkway": "pkwy", "highway": "hwy", "court": "ct", "place": "pl",
+               "circle": "cir", "trail": "trl", "freeway": "fwy", "suite": "ste", "north": "n",
+               "south": "s", "east": "e", "west": "w"}
+
+
+def addr_key(a):
+    """Duplicate key that treats '5330 Manchaca Road' and '5330 Manchaca Rd.' as one place."""
+    words = re.sub(r"[^\w\s]", " ", f'{a["line1"]} {a["line2"]}'.lower()).split()
+    return (" ".join(STREET_ABBR.get(w, w) for w in words), a["zip"][:5])
+
+
 # ---------------------------------------------------------------- build
 def build(shops_path, config_path, out_path, template="auto"):
     shops = json.loads(Path(shops_path).read_text())
@@ -220,7 +291,7 @@ def build(shops_path, config_path, out_path, template="auto"):
         elif dist > radius:
             why = f"outside radius ({dist:.1f} mi)"
         else:
-            key = (a["line1"].lower(), a["line2"].lower(), a["zip"][:5])
+            key = addr_key(a)
             if key in seen_addr:
                 why = "duplicate address"
             seen_addr.add(key)
@@ -301,6 +372,13 @@ def main():
     gr.add_argument("--lat", type=float, required=True)
     gr.add_argument("--lng", type=float, required=True)
     gr.add_argument("--radius", type=float, required=True)
+    o = sub.add_parser("osm")
+    o.add_argument("--lat", type=float, required=True)
+    o.add_argument("--lng", type=float, required=True)
+    o.add_argument("--radius", type=float, required=True)
+    o.add_argument("--state", default="", help="2-letter state for shops whose OSM entry has none")
+    o.add_argument("--out", required=True)
+    o.add_argument("--endpoint", default=OVERPASS_URL)
     b = sub.add_parser("build")
     b.add_argument("--shops", required=True)
     b.add_argument("--config", required=True)
@@ -313,6 +391,8 @@ def main():
     elif a.cmd == "grid":
         pts = grid(a.lat, a.lng, a.radius)
         print(json.dumps({"count": len(pts), "centers": pts}, indent=2))
+    elif a.cmd == "osm":
+        osm(a.lat, a.lng, a.radius, a.state, a.out, a.endpoint)
     else:
         build(a.shops, a.config, a.out, a.template)
 
