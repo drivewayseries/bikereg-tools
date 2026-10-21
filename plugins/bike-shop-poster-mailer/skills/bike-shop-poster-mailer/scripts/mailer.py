@@ -89,8 +89,7 @@ def geocode(zip5):
     zip5 = re.sub(r"\D", "", str(zip5))[:5]
     if len(zip5) != 5:
         sys.exit(f"Not a 5-digit ZIP: {zip5!r}")
-    with urllib.request.urlopen(f"https://api.zippopotam.us/us/{zip5}", timeout=20) as r:
-        d = json.load(r)
+    d = json.loads(http_get(f"https://api.zippopotam.us/us/{zip5}"))
     p = d["places"][0]
     return {"zip": zip5, "lat": float(p["latitude"]), "lng": float(p["longitude"]),
             "city": p["place name"], "state": p["state abbreviation"]}

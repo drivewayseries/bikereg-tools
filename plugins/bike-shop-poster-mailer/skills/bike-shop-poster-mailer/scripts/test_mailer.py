@@ -44,6 +44,16 @@ check("flat: dims sorted longest first, 1 lb 3 oz",
 check("weight in pounds", mailer.to_oz("1.5 lb"), 24.0)
 check("name cleanup drops digits and hyphens", mailer.clean_name("Mary-Jo O'Neil 3rd"), "Mary Jo O'Neil rd")
 
+# Geocode goes through http_get (and its CA fallback), not a bare urlopen
+real_get, seen = mailer.http_get, []
+mailer.http_get = lambda url, **kw: seen.append(url) or json.dumps({"places": [
+    {"latitude": "30.2428", "longitude": "-97.7658", "place name": "Austin",
+     "state abbreviation": "TX"}]}).encode()
+check("geocode uses http_get", (mailer.geocode("78704-1234"), seen),
+      ({"zip": "78704", "lat": 30.2428, "lng": -97.7658, "city": "Austin", "state": "TX"},
+       ["https://api.zippopotam.us/us/78704"]))
+mailer.http_get = real_get
+
 # End-to-end build against the bundled template
 with tempfile.TemporaryDirectory() as d:
     d = Path(d)

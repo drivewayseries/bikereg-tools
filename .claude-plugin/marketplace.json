@@ -53,7 +53,7 @@
       "name": "bike-shop-poster-mailer",
       "source": "./plugins/bike-shop-poster-mailer",
       "description": "Find every bike shop within a radius of a ZIP code and get a USPS Click-N-Ship bulk-label CSV to mail them posters or flyers. Asks for the ZIP, radius, package and return address one question at a time.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Chris Tolley"
       },
