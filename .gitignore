@@ -3,3 +3,5 @@ __pycache__/
 .DS_Store
 *.csv
 *.pptx
+# The USPS Click-N-Ship label template ships with the plugin
+!plugins/bike-shop-poster-mailer/skills/bike-shop-poster-mailer/assets/Label_Template.csv

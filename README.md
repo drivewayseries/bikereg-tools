@@ -1,6 +1,6 @@
 # bikereg-tools
 
-Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) event data.
+Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) event data, plus a tool for mailing race posters to local bike shops.
 
 ## Plugins
 
@@ -25,9 +25,17 @@ Attach registration CSVs (one per year for year-over-year) and your race logo, a
 
 Works with the CSV from **bikereg-registrations** or with BikeReg's promoter export (which adds age, price, and ZIP, so you get the age and revenue slides too). Slides whose data isn't in your files drop out automatically.
 
+### bike-shop-poster-mailer
+
+Tell Claude a ZIP code and a radius, and get a **USPS Click-N-Ship bulk-label CSV** with one label for every bike shop in that area, ready to mail posters or flyers.
+
+- **Finds the shops.** Claude searches the area and leaves out mobile repair vans, motorcycle dealers and spin studios. It shows you the list, with distances, before anything is written.
+- **One question at a time.** It asks for the ZIP, radius, package (tube, flat mailer or box, plus size and weight), and your return address in order.
+- **USPS's own template.** The column layout is the Click-N-Ship "Import Labels" template, fetched from this repo on every run. If USPS changes it, replacing one file here updates everyone.
+
 ## Install
 
-**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations** and/or **race-review-deck** from the list.
+**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations**, **race-review-deck** and/or **bike-shop-poster-mailer** from the list.
 
 **Claude Code:**
 
@@ -35,6 +43,7 @@ Works with the CSV from **bikereg-registrations** or with BikeReg's promoter exp
 /plugin marketplace add drivewayseries/bikereg-tools
 /plugin install bikereg-registrations@bikereg-tools
 /plugin install race-review-deck@bikereg-tools
+/plugin install bike-shop-poster-mailer@bikereg-tools
 ```
 
 ## Use
@@ -124,6 +133,52 @@ Without a narrative file, slides use the preset titles, and the summary falls ba
 ### Privacy
 
 A promoter export includes rider emails, phones, and addresses. The analysis keeps only counts, team names, and places, so no rider names or contact details reach the deck. `*.csv` and `*.pptx` are git-ignored here, so registration data and decks don't get committed by accident.
+
+## Bike shop poster mailer
+
+### Use
+
+> mail posters to every bike shop within 20 miles of 78704
+
+Claude picks up whatever you've already said (here, the ZIP and radius), searches, and shows the shops it found. You can drop any you don't want. Then it asks one question at a time:
+
+1. Tube, flat mailer, or box?
+2. Size in inches
+3. Weight of one packed piece
+4. Return name, plus a business name if you want one
+5. Return address
+6. Optional extras: ship date, a note printed on each label, an attention line
+
+You get a CSV named like `bike-shop-labels-78704-20mi.csv`.
+
+### Uploading to USPS
+
+1. In [Click-N-Ship](https://cnsb.usps.com/), choose **Import Batch of Labels** → **I have my own file to upload**, and select the CSV.
+2. Name the batch, check the column mapping (it should match, since the headers are USPS's own), and save the mapping for next time.
+3. In Label Manager, select all the labels, then use **Edit** under *Service and Package* to pick the service (Ground Advantage for posters) and packaging, all in one step.
+4. **Add All Complete to Cart** and pay.
+
+Service and package type are left blank in the CSV on purpose. USPS doesn't publish the exact values its importer accepts, and a wrong value would reject every row, so it's safer to set them in one bulk edit.
+
+### Updating the USPS template
+
+The template is [`plugins/bike-shop-poster-mailer/skills/bike-shop-poster-mailer/assets/Label_Template.csv`](plugins/bike-shop-poster-mailer/skills/bike-shop-poster-mailer/assets/Label_Template.csv). If USPS changes it:
+
+1. Download the new one from Click-N-Ship (Import Labels → File Upload → Download CSV Template).
+2. Replace that file, then run `python3 scripts/test_mailer.py`.
+3. Commit to `main`. The next run anywhere picks it up.
+
+A fetched template missing a column the builder writes is ignored in favor of the bundled copy, so a bad edit can't break a run. `*.csv` is git-ignored in this repo, with an exception for this one file.
+
+### Standalone use (no Claude)
+
+```
+cd plugins/bike-shop-poster-mailer/skills/bike-shop-poster-mailer
+python3 scripts/mailer.py geocode 78704
+python3 scripts/mailer.py build --shops shops.json --config config.json --out labels.csv
+```
+
+`shops.json` is a list of `{name, place_id, lat, lng, address}`, and `config.json` holds the sender and package. Both formats are documented in the skill's `SKILL.md`. No extra Python packages are needed.
 
 ## License
 

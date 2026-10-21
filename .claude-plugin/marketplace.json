@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Tools for cycling race promoters and teams working with BikeReg event data.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
@@ -44,6 +44,28 @@
         "slides",
         "pptx",
         "report"
+      ],
+      "category": "productivity",
+      "repository": "https://github.com/drivewayseries/bikereg-tools",
+      "homepage": "https://github.com/drivewayseries/bikereg-tools"
+    },
+    {
+      "name": "bike-shop-poster-mailer",
+      "source": "./plugins/bike-shop-poster-mailer",
+      "description": "Find every bike shop within a radius of a ZIP code and get a USPS Click-N-Ship bulk-label CSV to mail them posters or flyers. Asks for the ZIP, radius, package and return address one question at a time.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Chris Tolley"
+      },
+      "license": "MIT",
+      "keywords": [
+        "cycling",
+        "bike shops",
+        "usps",
+        "click-n-ship",
+        "shipping",
+        "posters",
+        "csv"
       ],
       "category": "productivity",
       "repository": "https://github.com/drivewayseries/bikereg-tools",
