@@ -1,0 +1,12 @@
+{
+  "name": "social-review-deck",
+  "version": "0.1.0",
+  "description": "Turn Meta (Instagram/Facebook) post exports and a logo into a social media review deck (.pptx) for a bike race: year over year, top posts collage, best post types, hashtags, partners, timing, with takeaways. Optional focus on one account, sponsor or hashtag.",
+  "author": {
+    "name": "Chris Tolley"
+  },
+  "license": "MIT",
+  "keywords": ["cycling", "race", "instagram", "facebook", "meta", "social media", "slides", "pptx", "report"],
+  "repository": "https://github.com/drivewayseries/bikereg-tools",
+  "homepage": "https://github.com/drivewayseries/bikereg-tools"
+}

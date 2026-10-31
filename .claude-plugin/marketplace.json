@@ -4,8 +4,8 @@
     "name": "Chris Tolley"
   },
   "metadata": {
-    "description": "Tools for cycling race promoters and teams working with BikeReg event data.",
-    "version": "0.3.0"
+    "description": "Tools for cycling race promoters and teams: BikeReg event data, race and social media review decks, and poster mailing.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
@@ -66,6 +66,28 @@
         "shipping",
         "posters",
         "csv"
+      ],
+      "category": "productivity",
+      "repository": "https://github.com/drivewayseries/bikereg-tools",
+      "homepage": "https://github.com/drivewayseries/bikereg-tools"
+    },
+    {
+      "name": "social-review-deck",
+      "source": "./plugins/social-review-deck",
+      "description": "Turn Meta (Instagram/Facebook) post exports and a logo into a social media review deck (.pptx) for a bike race: year over year, top posts collage, best post types, hashtags, partners and timing, with an optional focus on one account, sponsor or hashtag.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Chris Tolley"
+      },
+      "license": "MIT",
+      "keywords": [
+        "cycling",
+        "race",
+        "instagram",
+        "facebook",
+        "social media",
+        "slides",
+        "pptx"
       ],
       "category": "productivity",
       "repository": "https://github.com/drivewayseries/bikereg-tools",

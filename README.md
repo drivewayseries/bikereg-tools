@@ -1,6 +1,6 @@
 # bikereg-tools
 
-Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) event data, plus a tool for mailing race posters to local bike shops.
+Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) event data, plus a social media review deck and a tool for mailing race posters to local bike shops.
 
 ## Plugins
 
@@ -25,6 +25,16 @@ Attach registration CSVs (one per year for year-over-year) and your race logo, a
 
 Works with the CSV from **bikereg-registrations** or with BikeReg's promoter export (which adds age, price, and ZIP, so you get the age and revenue slides too). Slides whose data isn't in your files drop out automatically.
 
+### social-review-deck
+
+Attach your Meta post exports (Instagram or Facebook, one per year) and your logo, and get an editable **PowerPoint social media review**:
+
+- **Year over year:** posts, views, reach and engagement per post, month by month.
+- **What worked:** a collage of the top posts (with your images, or styled tiles), the top 10 table, the post that led each metric, and the ones that flopped.
+- **Post types, hashtags, partners and timing:** Reels vs. carousels vs. images, which hashtags beat the average post, which tagged partners and collaborator accounts drove views, and the best days and times to post.
+- **Optional focus.** Claude asks whether to look at everything or one account, hashtag, sponsor or keyword, and adds a focus-vs-everything slide.
+- **Same look as race-review-deck:** logo colors on the shared photo backgrounds, with a takeaway headline on every slide.
+
 ### bike-shop-poster-mailer
 
 Tell Claude a ZIP code and a radius, and get a **USPS Click-N-Ship bulk-label CSV** with one label for every bike shop in that area, ready to mail posters or flyers.
@@ -35,7 +45,7 @@ Tell Claude a ZIP code and a radius, and get a **USPS Click-N-Ship bulk-label CS
 
 ## Install
 
-**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations**, **race-review-deck** and/or **bike-shop-poster-mailer** from the list.
+**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations**, **race-review-deck**, **social-review-deck** and/or **bike-shop-poster-mailer** from the list.
 
 **Claude Code:**
 
@@ -43,6 +53,7 @@ Tell Claude a ZIP code and a radius, and get a **USPS Click-N-Ship bulk-label CS
 /plugin marketplace add drivewayseries/bikereg-tools
 /plugin install bikereg-registrations@bikereg-tools
 /plugin install race-review-deck@bikereg-tools
+/plugin install social-review-deck@bikereg-tools
 /plugin install bike-shop-poster-mailer@bikereg-tools
 ```
 
@@ -133,6 +144,31 @@ Without a narrative file, slides use the preset titles, and the summary falls ba
 ### Privacy
 
 A promoter export includes rider emails, phones, and addresses. The analysis keeps only counts, team names, and places, so no rider names or contact details reach the deck. `*.csv` and `*.pptx` are git-ignored here, so registration data and decks don't get committed by accident.
+
+## Social media review deck
+
+### Use
+
+> make a social media review deck from these
+
+…with your Meta exports and logo attached. Export from **Meta Business Suite → Insights → Content → Export data (CSV)**, using the same date window each year (say Jan 1 to Oct 31) so the comparison is fair. Claude runs the numbers, asks whether to focus on one account, hashtag or sponsor, lists the top 8 posts so you can send screenshots for the collage (optional), and sends the .pptx.
+
+### Notes
+
+- **Collaborator posts are included.** Meta's export includes posts from other accounts that added you as a collaborator. Focus on your own account (`--account`) to leave them out.
+- **Metrics are lifetime totals** as of the export date, so posts from the last few weeks look smaller than they will end up.
+- **No images are downloaded.** Instagram doesn't allow it without logging in. Tiles without an image still link to the post.
+- **Shared photos.** Backgrounds come from race-review-deck's `slides/backgrounds/`, so changing a photo there changes both decks.
+
+### Standalone use (no Claude)
+
+```
+cd plugins/social-review-deck/skills/social-review-deck/scripts
+pip install python-pptx pillow
+python3 analyze.py export_2025.csv export_2026.csv -o analysis.json            # add --account / --hashtag / --mention to focus
+python3 palette.py logo.png -o palette.json
+python3 build_deck.py --analysis analysis.json --palette palette.json --logo logo.png --images top_posts/ -o review.pptx
+```
 
 ## Bike shop poster mailer
 

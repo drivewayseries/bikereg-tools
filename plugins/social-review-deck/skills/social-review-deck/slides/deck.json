@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "name": "Social media review — standard",
+  "about": "Preset slides for a social media performance review built from Meta post exports. Edit this file on GitHub to change every future deck; build_deck.py fetches it at run time and falls back to the copy bundled with the plugin. Photos come from 'backgrounds_from' (the race-review-deck library, so both decks share one set of photos), falling back to the bundled copies in backgrounds/. 'requires' lists analysis flags or data paths that must be present, otherwise the slide is skipped. 'title' is the fallback headline; the narrative file supplies a takeaway headline per slide id.",
+  "theme": {
+    "heading_font": "Arial",
+    "body_font": "Arial",
+    "mode": "dark",
+    "background_color": "#131419",
+    "content_panel_opacity": 0.82
+  },
+  "backgrounds_from": "drivewayseries/bikereg-tools@main:plugins/race-review-deck/skills/race-review-deck/slides",
+  "footer": "{name} · {current} social media review",
+  "slides": [
+    {"id": "title", "layout": "title", "title": "{name}", "subtitle": "{current} Social Media Review"},
+    {"id": "summary", "layout": "bullets", "title": "Executive summary", "items": ["narrative.summary", "facts"]},
+    {"id": "at_a_glance", "layout": "kpis", "title": "{current} at a glance", "metrics": [
+      {"key": "posts", "label": "Posts", "format": "int"},
+      {"key": "views", "label": "Total views", "format": "compact"},
+      {"key": "avg_views", "label": "Avg views per post", "format": "int"},
+      {"key": "reach", "label": "Total reach", "format": "compact"},
+      {"key": "er", "label": "Engagement rate (of reach)", "format": "pct1"},
+      {"key": "follows", "label": "Follows from posts", "format": "int"}
+    ]},
+    {"id": "engagement_totals", "layout": "kpis", "title": "How people engaged", "requires": ["has_shares"], "metrics": [
+      {"key": "likes", "label": "Likes", "format": "compact"},
+      {"key": "comments", "label": "Comments", "format": "int"},
+      {"key": "shares", "label": "Shares", "format": "int"},
+      {"key": "saves", "label": "Saves", "format": "int"},
+      {"key": "accounts", "label": "Accounts posting", "format": "int"},
+      {"key": "reels_share", "label": "Share of posts that were Reels", "format": "pct"}
+    ]},
+    {"id": "focus_vs_all", "layout": "chart", "chart": "focus_vs_all", "title": "{focus} vs all posts", "requires": ["has_focus"]},
+
+    {"id": "s_trend", "layout": "section", "title": "Year over year", "subtitle": "{previous} → {current}", "requires": ["multi_edition"]},
+    {"id": "totals_by_period", "layout": "chart", "chart": "totals_by_period", "title": "Posting volume and average performance", "requires": ["multi_edition"]},
+    {"id": "views_by_month", "layout": "chart", "chart": "views_by_month", "title": "Views by month"},
+    {"id": "posts_by_month", "layout": "chart", "chart": "posts_by_month", "title": "Posts by month"},
+
+    {"id": "s_top", "layout": "section", "title": "What worked"},
+    {"id": "top_collage", "layout": "collage", "title": "Top posts of {current}", "cols": 4, "count": 8},
+    {"id": "top_posts", "layout": "table", "table": "top_posts", "title": "Top 10 posts by views", "max_rows": 10},
+    {"id": "metric_leaders", "layout": "table", "table": "metric_leaders", "title": "The post that led each metric"},
+    {"id": "bottom_posts", "layout": "table", "table": "bottom_posts", "title": "Posts that underperformed", "requires": ["tables.bottom_posts.rows"]},
+
+    {"id": "s_types", "layout": "section", "title": "Post types"},
+    {"id": "type_mix", "layout": "chart", "chart": "type_mix", "title": "Post type mix"},
+    {"id": "type_avg_views", "layout": "chart", "chart": "type_avg_views", "title": "Average views by post type"},
+    {"id": "type_er", "layout": "chart", "chart": "type_er", "title": "Engagement rate by post type", "requires": ["has_reach"]},
+    {"id": "post_types", "layout": "table", "table": "post_types", "title": "Post type scorecard"},
+    {"id": "reel_length", "layout": "chart", "chart": "reel_length", "title": "Reel length vs views", "requires": ["charts.reel_length"]},
+
+    {"id": "s_tags", "layout": "section", "title": "Hashtags & partners"},
+    {"id": "hashtag_avg_views", "layout": "chart", "chart": "hashtag_avg_views", "title": "Hashtags by average views", "requires": ["has_hashtags"]},
+    {"id": "hashtag_usage", "layout": "chart", "chart": "hashtag_usage", "title": "Most-used hashtags", "requires": ["charts.hashtag_usage"]},
+    {"id": "top_hashtags", "layout": "table", "table": "top_hashtags", "title": "Hashtag scorecard", "requires": ["has_hashtags"]},
+    {"id": "hashtag_vs_none", "layout": "chart", "chart": "hashtag_vs_none", "title": "Posts with and without hashtags", "requires": ["charts.hashtag_vs_none"]},
+    {"id": "hashtag_yoy", "layout": "table", "table": "hashtag_yoy", "title": "Hashtags year over year", "requires": ["tables.hashtag_yoy.rows"]},
+    {"id": "top_mentions", "layout": "table", "table": "top_mentions", "title": "Most-tagged partners and accounts", "requires": ["has_mentions"]},
+    {"id": "accounts_views", "layout": "chart", "chart": "accounts_views", "title": "Views by posting account", "requires": ["multi_account"]},
+
+    {"id": "s_timing", "layout": "section", "title": "When to post"},
+    {"id": "weekday_views", "layout": "chart", "chart": "weekday_views", "title": "Average views by day of week"},
+    {"id": "time_views", "layout": "chart", "chart": "time_views", "title": "Average views by time of day"},
+    {"id": "engagement_mix", "layout": "chart", "chart": "engagement_mix", "title": "What kind of engagement", "requires": ["has_shares"]},
+
+    {"id": "outliers", "layout": "bullets", "title": "Outliers worth a look", "items": ["narrative.outliers", "outliers"], "max_items": 7},
+    {"id": "recommendations", "layout": "bullets", "title": "Recommendations for next season", "items": ["narrative.recommendations"], "requires": ["narrative.recommendations"]},
+    {"id": "data_notes", "layout": "bullets", "title": "About this data", "items": ["data_notes"], "small": true},
+    {"id": "closing", "layout": "closing", "title": "Thank you", "subtitle": "{name}"}
+  ],
+  "backgrounds": {
+    "title": ["D16.jpg"],
+    "section": ["D11.jpg", "D12.jpg", "D14.jpg", "D13.jpg", "D15.jpg"],
+    "content": ["D10.jpg", "D13.jpg", "D15.jpg", "D12.jpg", "D14.jpg", "D11.jpg"],
+    "collage": ["D10.jpg"],
+    "closing": ["D16.jpg"]
+  }
+}
