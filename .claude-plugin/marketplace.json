@@ -4,8 +4,8 @@
     "name": "Chris Tolley"
   },
   "metadata": {
-    "description": "Tools for cycling race promoters and teams: BikeReg event data, race and social media review decks, and poster mailing.",
-    "version": "0.4.0"
+    "description": "Tools for cycling race promoters and teams: BikeReg registrations, USA Cycling results, race and social media review decks, and poster mailing.",
+    "version": "0.5.0"
   },
   "plugins": [
     {
@@ -21,6 +21,28 @@
         "bikereg",
         "cycling",
         "registrations",
+        "race",
+        "csv"
+      ],
+      "category": "productivity",
+      "repository": "https://github.com/drivewayseries/bikereg-tools",
+      "homepage": "https://github.com/drivewayseries/bikereg-tools"
+    },
+    {
+      "name": "usac-results",
+      "source": "./plugins/usac-results",
+      "description": "Paste USA Cycling (Sport80) results links for up to 20 events and get one verified CSV of every result: place, DNF/DNS, name, city, state, team, USAC #, bib, points, gender.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Chris Tolley"
+      },
+      "license": "MIT",
+      "keywords": [
+        "usa cycling",
+        "usac",
+        "sport80",
+        "cycling",
+        "results",
         "race",
         "csv"
       ],

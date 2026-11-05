@@ -1,0 +1,20 @@
+{
+  "name": "usac-results",
+  "version": "0.1.0",
+  "description": "Paste USA Cycling (Sport80) results links for up to 20 events and get one verified CSV of every result: place, DNF/DNS, name, city, state, team, USAC #, bib, points, gender.",
+  "author": {
+    "name": "Chris Tolley"
+  },
+  "license": "MIT",
+  "keywords": [
+    "usa cycling",
+    "usac",
+    "sport80",
+    "cycling",
+    "results",
+    "race",
+    "csv"
+  ],
+  "repository": "https://github.com/drivewayseries/bikereg-tools",
+  "homepage": "https://github.com/drivewayseries/bikereg-tools"
+}

@@ -1,6 +1,6 @@
 # bikereg-tools
 
-Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) event data, plus a social media review deck and a tool for mailing race posters to local bike shops.
+Claude plugins for cycling race promoters, teams, and anyone who works with [BikeReg](https://www.bikereg.com) or [USA Cycling](https://usacycling.sport80.com/pub/results) event data, plus a social media review deck and a tool for mailing race posters to local bike shops.
 
 ## Plugins
 
@@ -13,6 +13,16 @@ Event, Event ID, First Name, Last Name, Race Category, Gender, Team, City, State
 ```
 
 Every category's row count is verified against the entry count BikeReg prints on the page, so a partial scrape can't pass silently. No login needed — it reads the same "Who's Registered" list anyone can see, so it works for events you don't promote.
+
+### usac-results
+
+Paste a USA Cycling results link for up to 20 events and get back **one CSV** of every result, across every day, discipline and category of each event:
+
+```
+Event, Event ID, Date, Discipline, Race Category, Gender, Place, Name, City, State, Team, USAC #, Bib, Time, Points
+```
+
+DNF, DNS and DQ rows are included, gender comes from the results site's own Male/Female/Mixed filters, and every race's row count is checked against the total the site reports. One link per event is enough. No login needed.
 
 ### race-review-deck
 
@@ -45,13 +55,14 @@ Tell Claude a ZIP code and a radius, and get a **USPS Click-N-Ship bulk-label CS
 
 ## Install
 
-**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations**, **race-review-deck**, **social-review-deck** and/or **bike-shop-poster-mailer** from the list.
+**Claude (desktop app / Cowork):** Customize → Plugins → **+** → Add marketplace → *Add from a repository* → paste this repo's URL. Then install **bikereg-registrations**, **usac-results**, **race-review-deck**, **social-review-deck** and/or **bike-shop-poster-mailer** from the list.
 
 **Claude Code:**
 
 ```
 /plugin marketplace add drivewayseries/bikereg-tools
 /plugin install bikereg-registrations@bikereg-tools
+/plugin install usac-results@bikereg-tools
 /plugin install race-review-deck@bikereg-tools
 /plugin install social-review-deck@bikereg-tools
 /plugin install bike-shop-poster-mailer@bikereg-tools
@@ -111,6 +122,33 @@ Each category is one request, and a big stage race has 50+. If BikeReg answers `
 BikeReg's Who's Registered page (`bikereg.com/Confirmed/<id>`) is a React app backed by a GraphQL endpoint, `bikereg.com/api/supergraph/gql`. The script sends the page's own two queries: `AR_GetWhosRegisteredGroups` returns every category's `raceRecId`, name and entry count, and `AR_GetWhosRegisteredEntries` returns the riders, 10 categories per request. It then reconciles each category's entry count against BikeReg's. Politeness delay between requests defaults to 1 s.
 
 If BikeReg changes its API, the script fails loudly, either on a GraphQL error or on a count mismatch. Run `scripts/test_bikereg.py` (offline, uses captured responses) to tell an API change from a script edit, and open an issue.
+
+## USA Cycling results
+
+### Use
+
+> pull USAC results for https://usacycling.sport80.com/pub/results/events/30723/d/crit/2026-06-07
+
+**Finding the link:** on [usacycling.sport80.com/pub/results](https://usacycling.sport80.com/pub/results), open the event and pick any day. The script finds the other days and disciplines from it. Results only appear once officials have uploaded them.
+
+### Standalone use (no Claude)
+
+```
+python3 plugins/usac-results/skills/usac-results/scripts/usac_results.py "<results URL>" "<another event's URL>" -o ~/Downloads
+```
+
+Quote each URL: Sport80 links often carry commas and spaces in `?text=`. Option: `--delay` (seconds between requests, default 1.0). On macOS, if you see `CERTIFICATE_VERIFY_FAILED`, use `/usr/bin/python3` (see the certificate note above).
+
+### Notes on the data
+
+- **One row per race result.** A rider who raced all three days of an omnium appears three times. Unique riders are counted by USAC license #, or by name if there isn't one.
+- **DNS rows are riders who were entered but didn't start**, so the file is close to an entry list. It's still not registrations: there's no registration date, and riders who withdrew before results were posted are missing.
+- **Gender comes from the site's Male/Female/Mixed filters.** Junior and open races are usually `Mixed`.
+- Riders without a USAC license (international, one-day) have blank USAC #, City/State and Points. Time is often `0` in crits, which are scored by place.
+
+### How it works
+
+The results site is an Inertia.js app. Each results page embeds its data as JSON in a `data-page` attribute, which lists the event's days and each race's id. The same page with `?gender=M|F|N` gives each race's gender. Each race's full results come from `POST /pub/results/races/<race_id>/datatable?data=1`. Run `scripts/test_usac.py` (offline, uses captured responses) to tell a site change from a script edit.
 
 ## Race review deck
 
